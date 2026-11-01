@@ -11,6 +11,10 @@ Incremental tokenization is supplied by Lexer's generic
 `RestartAndConvergeTokenizer`; this package provides only the PL/0 scanner and
 the conformances that describe its tokens, trivia, and diagnostics.
 
+Reference-parser region reuse and recovery replay are supplied by
+LL-Parsing's `LLRegionMemoizer`; PL/0 provides its rule keys and relocation
+conformances without owning the cache algorithm.
+
 ## Products
 
 - `PL0Language` — grammar-backed lexer, parser front ends, recovery model,

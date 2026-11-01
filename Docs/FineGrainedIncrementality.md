@@ -26,6 +26,10 @@ revision or if the grammar artifact changes.
 
 ## Reference parser
 
+The region proof, descendant-cache preservation, relocation, and recovery
+replay machinery live in `LL-Parsing` as `LLRegionMemoizer`. The PL/0 reference
+parser supplies rule keys and language-specific evidence conformances.
+
 The reference LL parser memoizes block, statement, condition, expression, term,
 and factor regions. A region is reusable only when its start token, every
 consumed token, and the following lookahead retain their stable identities and

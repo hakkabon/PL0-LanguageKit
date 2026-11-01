@@ -1,4 +1,5 @@
 import Foundation
+import LL_Parsing
 
 /// Parser identity is explicit so the workbench can compare engines later
 /// without changing its result model.
@@ -298,18 +299,17 @@ private final class ReferenceParser {
     private var diagnostics: [ParseDiagnostic]
     private var recoveries: [RecoveryAction] = []
     private var expectations: [ParseExpectation] = []
-    private let previousCache: ReferenceParserCache?
-    private var nextCache = ReferenceParserCache()
+    private var memoizer: ReferenceParserMemoizer
     private var reusedNodeCount = 0
     private var reusedTokenCount = 0
 
-    var resultCache: ReferenceParserCache { nextCache }
+    var resultCache: ReferenceParserCache { memoizer.result }
 
     init(tokens: [PL0Token], lexicalDiagnostics: [ParseDiagnostic],
          previousCache: ReferenceParserCache?) {
         self.tokens = tokens
         self.diagnostics = lexicalDiagnostics
-        self.previousCache = previousCache
+        self.memoizer = ReferenceParserMemoizer(previous: previousCache)
     }
 
     private var current: PL0Token { tokens[min(index, tokens.count - 1)] }
@@ -327,7 +327,7 @@ private final class ReferenceParser {
             reusedNodeCount: reusedNodeCount,
             reusedTokenCount: reusedTokenCount,
             parsedNodeCount: max(0, root.nodeCount - reusedNodeCount),
-            incremental: previousCache?.isEmpty == false)
+            incremental: memoizer.isIncremental)
         let recovery = RecoveryModel(actions: recoveries,
                                      expectations: expectations,
                                      diagnostics: diagnostics)
@@ -547,139 +547,29 @@ private final class ReferenceParser {
     private func memoized(_ rule: ReferenceParserRule,
                           _ parse: () -> SyntaxNode) -> SyntaxNode {
         let startIndex = index
-        let startToken = current
-        let key = ReferenceParserCache.Key(rule: rule, startTokenID: startToken.id)
-
-        if let entry = previousCache?.entries[key],
-           cacheEntryMatches(entry, at: startIndex) {
-            let delta = startToken.range.location - entry.startLocation
-            let node = entry.node.relocated(by: delta)
-            index += entry.tokenIDs.count
-            reusedNodeCount += node.nodeCount
-            reusedTokenCount += entry.tokenIDs.count
-            replayEffects(from: entry, relocatingBy: delta,
-                          currentStartIndex: startIndex)
-            carryCacheEntries(inside: entry, relocatingBy: delta)
-            return node
+        if let reuse = memoizer.reuse(rule: rule, tokens: tokens, at: startIndex) {
+            index += reuse.consumedTokenCount
+            reusedNodeCount += reuse.node.nodeCount
+            reusedTokenCount += reuse.consumedTokenCount
+            diagnostics.append(contentsOf: reuse.effects.diagnostics)
+            recoveries.append(contentsOf: reuse.effects.recoveries)
+            expectations.append(contentsOf: reuse.effects.expectations)
+            return reuse.node
         }
 
         let diagnosticCount = diagnostics.count
         let recoveryCount = recoveries.count
         let expectationCount = expectations.count
         let node = parse()
-        let consumedCount = index - startIndex
-        if consumedCount > 0 {
-            let tokenIDs = tokens[startIndex..<index].map(\.id)
-            let relativeLocations = tokens[startIndex..<index].map {
-                $0.range.location - startToken.range.location
-            }
-            nextCache.entries[key] = ReferenceParserCache.Entry(
-                tokenIDs: tokenIDs,
-                tokenRelativeLocations: relativeLocations,
-                nextTokenID: current.id,
-                nextTokenRelativeLocation: current.range.location
-                    - startToken.range.location,
-                startLocation: startToken.range.location,
-                node: node,
+        memoizer.record(
+            rule: rule, tokens: tokens,
+            startIndex: startIndex, endIndex: index,
+            node: node,
+            effects: LLRegionEffects(
                 diagnostics: Array(diagnostics[diagnosticCount...]),
                 recoveries: Array(recoveries[recoveryCount...]),
-                expectations: Array(expectations[expectationCount...]))
-        }
+                expectations: Array(expectations[expectationCount...])))
         return node
-    }
-
-    private func cacheEntryMatches(_ entry: ReferenceParserCache.Entry,
-                                   at startIndex: Int) -> Bool {
-        let endIndex = startIndex + entry.tokenIDs.count
-        guard endIndex < tokens.count else { return false }
-        for (offset, tokenID) in entry.tokenIDs.enumerated() {
-            let token = tokens[startIndex + offset]
-            guard token.id == tokenID,
-                  token.range.location - tokens[startIndex].range.location
-                    == entry.tokenRelativeLocations[offset] else {
-                return false
-            }
-        }
-        return tokens[endIndex].id == entry.nextTokenID
-            && tokens[endIndex].range.location - tokens[startIndex].range.location
-                == entry.nextTokenRelativeLocation
-    }
-
-    /// An outer hit bypasses all recursive parser calls below it. Preserve the
-    /// descendant entries too, otherwise a following edit inside that subtree
-    /// would have only the coarse ancestor entry available for reuse.
-    private func carryCacheEntries(inside reusedEntry: ReferenceParserCache.Entry,
-                                   relocatingBy delta: Int) {
-        guard let previousCache else { return }
-        let regionTokenIDs = Set(reusedEntry.tokenIDs)
-        for (key, entry) in previousCache.entries
-        where regionTokenIDs.contains(key.startTokenID) {
-            let tokensAreInside = entry.tokenIDs.allSatisfy(regionTokenIDs.contains)
-            let lookaheadIsInside = regionTokenIDs.contains(entry.nextTokenID)
-                || entry.nextTokenID == reusedEntry.nextTokenID
-            guard tokensAreInside, lookaheadIsInside else { continue }
-            nextCache.entries[key] = ReferenceParserCache.Entry(
-                tokenIDs: entry.tokenIDs,
-                tokenRelativeLocations: entry.tokenRelativeLocations,
-                nextTokenID: entry.nextTokenID,
-                nextTokenRelativeLocation: entry.nextTokenRelativeLocation,
-                startLocation: entry.startLocation + delta,
-                node: entry.node.relocated(by: delta),
-                diagnostics: entry.diagnostics.map { relocated($0, by: delta) },
-                recoveries: entry.recoveries.map {
-                    relocated($0, by: delta, currentTokens: [:])
-                },
-                expectations: entry.expectations.map {
-                    ParseExpectation(offset: $0.offset + delta, kinds: $0.kinds)
-                })
-        }
-    }
-
-    private func replayEffects(from entry: ReferenceParserCache.Entry,
-                               relocatingBy delta: Int,
-                               currentStartIndex: Int) {
-        let currentSlice = tokens[currentStartIndex..<(currentStartIndex
-            + entry.tokenIDs.count)]
-        let currentTokens = Dictionary(uniqueKeysWithValues:
-            currentSlice.map { ($0.id, $0) })
-        diagnostics.append(contentsOf: entry.diagnostics.map {
-            relocated($0, by: delta)
-        })
-        recoveries.append(contentsOf: entry.recoveries.map {
-            relocated($0, by: delta, currentTokens: currentTokens)
-        })
-        expectations.append(contentsOf: entry.expectations.map {
-            ParseExpectation(offset: $0.offset + delta, kinds: $0.kinds)
-        })
-    }
-
-    private func relocated(_ diagnostic: ParseDiagnostic,
-                           by delta: Int) -> ParseDiagnostic {
-        ParseDiagnostic(
-            severity: diagnostic.severity, message: diagnostic.message,
-            range: SourceRange(location: diagnostic.range.location + delta,
-                               length: diagnostic.range.length),
-            expected: diagnostic.expected)
-    }
-
-    private func relocated(_ recovery: RecoveryAction, by delta: Int,
-                           currentTokens: [String: PL0Token]) -> RecoveryAction {
-        switch recovery {
-        case let .insert(kind, offset):
-            .insert(kind: kind, at: offset + delta)
-        case let .delete(token):
-            .delete(token: currentTokens[token.id] ?? relocated(token, by: delta))
-        }
-    }
-
-    private func relocated(_ token: PL0Token, by delta: Int) -> PL0Token {
-        PL0Token(
-            id: token.id, kind: token.kind, lexeme: token.lexeme,
-            range: SourceRange(location: token.range.location + delta,
-                               length: token.range.length),
-            location: SourceLocation(offset: token.location.offset + delta,
-                                     line: token.location.line,
-                                     column: token.location.column))
     }
 
     @discardableResult
