@@ -17,6 +17,10 @@ token-delimited parser cache         clean and recovered CST regions
 declaration and binding cache        dependency-aware semantic reuse
 ```
 
+The restart-and-converge coordinator is implemented generically in the
+`Lexer` package. PL/0 supplies its scanner and positioned token, trivia, and
+diagnostic conformances; it does not own the reuse algorithm.
+
 Every cache is discarded if the edit cannot be proven to follow the cached
 revision or if the grammar artifact changes.
 

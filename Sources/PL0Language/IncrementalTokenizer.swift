@@ -1,24 +1,7 @@
 import Foundation
+import Lexer
 
-public struct IncrementalLexMetrics: Sendable, Equatable {
-    public let scannedUTF16Length: Int
-    public let generatedTokenCount: Int
-    public let reusedPrefixTokenCount: Int
-    public let reusedSuffixTokenCount: Int
-    public let converged: Bool
-    public let incremental: Bool
-
-    public init(scannedUTF16Length: Int, generatedTokenCount: Int,
-                reusedPrefixTokenCount: Int, reusedSuffixTokenCount: Int,
-                converged: Bool, incremental: Bool) {
-        self.scannedUTF16Length = scannedUTF16Length
-        self.generatedTokenCount = generatedTokenCount
-        self.reusedPrefixTokenCount = reusedPrefixTokenCount
-        self.reusedSuffixTokenCount = reusedSuffixTokenCount
-        self.converged = converged
-        self.incremental = incremental
-    }
-}
+public typealias IncrementalLexMetrics = RestartAndConvergeMetrics
 
 public struct IncrementalLexResult: Sendable {
     public let version: UInt64
@@ -26,178 +9,126 @@ public struct IncrementalLexResult: Sendable {
     public let metrics: IncrementalLexMetrics
 }
 
-/// Stateful incremental tokenizer for one document.
-///
-/// It preserves tokens strictly before a safe restart boundary, scans from
-/// there, and stops as soon as a token aligns with the unchanged old suffix.
-/// Remaining tokens keep their identities and receive relocated ranges/source
-/// locations. A missing or inconsistent edit falls back to a full scan.
+/// PL/0 adapter over Lexer's language-neutral restart-and-converge engine.
 public struct PL0IncrementalTokenizer: Sendable {
-    private struct State: Sendable {
-        let version: UInt64
-        let text: String
-        let lexed: LexResult
-    }
-
-    private var previous: State?
-    private let languageKit: PL0LanguageKit
+    private var tokenizer: RestartAndConvergeTokenizer<PL0RestartableScanner>
 
     public init(languageKit: PL0LanguageKit = .bundled) {
-        self.languageKit = languageKit
+        tokenizer = RestartAndConvergeTokenizer(
+            scanner: PL0RestartableScanner(languageKit: languageKit))
     }
 
     public mutating func tokenize(_ snapshot: SourceSnapshot) -> IncrementalLexResult {
-        guard let old = previous,
-              let edit = snapshot.edit,
-              snapshot.version > old.version,
-              edit.baseVersion == nil || edit.baseVersion == old.version,
-              isConsistent(edit: edit, oldText: old.text, newText: snapshot.text) else {
-            return fullTokenize(snapshot)
+        let edit = snapshot.edit.map {
+            IncrementalLexerEdit(
+                baseRevision: $0.baseVersion,
+                replacedRange: $0.replacedRange.location..<$0.replacedRange.end,
+                replacementLength: $0.replacementLength)
         }
-
-        let oldTokens = old.lexed.tokens
-        let prefixCount = oldTokens.prefix { token in
-            token.kind != .endOfFile && token.range.end < edit.replacedRange.location
-        }.count
-        let prefix = Array(oldTokens.prefix(prefixCount))
-        let restart = prefix.last.map { token in
-            SourceLocation(offset: token.range.end,
-                           line: token.location.line,
-                           column: token.location.column + token.range.length)
-        } ?? SourceLocation(offset: 0, line: 1, column: 1)
-
-        let delta = edit.replacementLength - edit.replacedRange.length
-        let newEditEnd = edit.replacedRange.location + edit.replacementLength
-        let oldIndexByLocation = Dictionary(uniqueKeysWithValues:
-            oldTokens.enumerated().map { ($0.element.range.location, $0.offset) })
-        var convergedOldIndex: Int?
-        var convergencePair: (new: PL0Token, old: PL0Token)?
-
-        let scanned = PL0Lexer(languageKit: languageKit).scan(snapshot.text as NSString,
-                                      from: restart,
-                                      version: snapshot.version) { newToken in
-            guard newToken.range.location >= newEditEnd else { return false }
-            let oldLocation = newToken.range.location - delta
-            guard let oldIndex = oldIndexByLocation[oldLocation],
-                  oldIndex >= prefixCount else { return false }
-            let oldToken = oldTokens[oldIndex]
-            guard oldToken.kind == newToken.kind,
-                  oldToken.lexeme == newToken.lexeme else { return false }
-            convergedOldIndex = oldIndex
-            convergencePair = (newToken, oldToken)
-            return true
-        }
-
-        var tokens = prefix + scanned.tokens
-        let losslessPrefix = old.lexed.losslessTokens.filter { $0.range.end <= restart.offset }
-        var losslessTokens = losslessPrefix + scanned.losslessTokens
-        var suffix: [PL0Token] = []
-        if let oldIndex = convergedOldIndex, let pair = convergencePair {
-            suffix = oldTokens[oldIndex...].map {
-                relocate($0, delta: delta, oldAnchor: pair.old, newAnchor: pair.new)
-            }
-            tokens.append(contentsOf: suffix)
-            if let losslessIndex = old.lexed.losslessTokens.firstIndex(where: {
-                $0.id == pair.old.id
-            }) {
-                losslessTokens.append(contentsOf: old.lexed.losslessTokens[losslessIndex...].map {
-                    relocate($0, delta: delta, oldAnchor: pair.old, newAnchor: pair.new)
-                })
-            }
-        }
-
-        let prefixDiagnostics = old.lexed.diagnostics.filter {
-            $0.range.end <= restart.offset
-        }
-        var diagnostics = prefixDiagnostics + scanned.diagnostics
-        if let pair = convergencePair {
-            diagnostics.append(contentsOf: old.lexed.diagnostics
-                .filter { $0.range.location >= pair.old.range.location }
-                .map { relocate($0, delta: delta) })
-        }
-
-        let result = LexResult(tokens: tokens, losslessTokens: losslessTokens,
-                               diagnostics: diagnostics)
-        previous = State(version: snapshot.version, text: snapshot.text, lexed: result)
+        let result = tokenizer.tokenize(
+            revision: snapshot.version, text: snapshot.text, edit: edit)
         return IncrementalLexResult(
-            version: snapshot.version,
-            lexed: result,
-            metrics: IncrementalLexMetrics(
-                scannedUTF16Length: max(0, scanned.scannedEnd - restart.offset),
-                generatedTokenCount: scanned.tokens.count,
-                reusedPrefixTokenCount: prefix.count,
-                reusedSuffixTokenCount: suffix.count,
-                converged: scanned.stoppedForConvergence,
-                incremental: true))
+            version: result.revision,
+            lexed: LexResult(
+                tokens: result.output.tokens,
+                losslessTokens: result.output.elements,
+                diagnostics: result.output.diagnostics),
+            metrics: result.metrics)
     }
 
-    public mutating func reset() { previous = nil }
+    public mutating func reset() { tokenizer.reset() }
+}
 
-    private mutating func fullTokenize(_ snapshot: SourceSnapshot) -> IncrementalLexResult {
-        let lexed = PL0Lexer(languageKit: languageKit).tokenize(snapshot)
-        previous = State(version: snapshot.version, text: snapshot.text, lexed: lexed)
-        return IncrementalLexResult(
-            version: snapshot.version,
-            lexed: lexed,
-            metrics: IncrementalLexMetrics(
-                scannedUTF16Length: snapshot.text.utf16.count,
-                generatedTokenCount: lexed.tokens.count,
-                reusedPrefixTokenCount: 0,
-                reusedSuffixTokenCount: 0,
-                converged: false,
-                incremental: false))
+private struct PL0RestartableScanner: RestartableLexer {
+    let languageKit: PL0LanguageKit
+
+    func scan(text: String, from position: LexicalPosition, revision: UInt64,
+              shouldStopBefore: ((PL0Token) -> Bool)?)
+        -> RestartableLexicalScan<PL0Token, PL0LosslessToken, ParseDiagnostic> {
+        let output = PL0Lexer(languageKit: languageKit).scan(
+            text as NSString,
+            from: SourceLocation(
+                offset: position.offset, line: position.line, column: position.column),
+            version: revision,
+            shouldConverge: shouldStopBefore)
+        return RestartableLexicalScan(
+            tokens: output.tokens,
+            elements: output.losslessTokens,
+            diagnostics: output.diagnostics,
+            scannedEnd: output.scannedEnd,
+            stoppedForConvergence: output.stoppedForConvergence)
     }
+}
 
-    private func isConsistent(edit: SourceEdit, oldText: String, newText: String) -> Bool {
-        let oldLength = oldText.utf16.count
-        let range = edit.replacedRange
-        return range.location >= 0
-            && range.length >= 0
-            && range.end <= oldLength
-            && edit.replacementLength >= 0
-            && oldLength - range.length + edit.replacementLength == newText.utf16.count
+extension PL0Token: IncrementalLexicalToken {
+    public var incrementalID: String { id }
+    public var incrementalKind: PL0TokenKind { kind }
+    public var incrementalLexeme: String { lexeme }
+    public var incrementalRange: Range<Int> { range.location..<range.end }
+    public var incrementalPosition: LexicalPosition {
+        LexicalPosition(offset: location.offset, line: location.line,
+                        column: location.column)
     }
+    public var incrementalEndPosition: LexicalPosition {
+        LexicalPosition(offset: range.end, line: location.line,
+                        column: location.column + range.length)
+    }
+    public var incrementalIsEndOfInput: Bool { kind == .endOfFile }
 
-    private func relocate(_ token: PL0Token, delta: Int,
-                          oldAnchor: PL0Token, newAnchor: PL0Token) -> PL0Token {
+    public func relocated(by delta: Int, from oldAnchor: PL0Token,
+                          to newAnchor: PL0Token) -> PL0Token {
         let line: Int
         let column: Int
-        if token.location.line == oldAnchor.location.line {
+        if location.line == oldAnchor.location.line {
             line = newAnchor.location.line
             column = newAnchor.location.column
-                + token.location.column - oldAnchor.location.column
+                + location.column - oldAnchor.location.column
         } else {
-            line = newAnchor.location.line + token.location.line - oldAnchor.location.line
-            column = token.location.column
+            line = newAnchor.location.line + location.line - oldAnchor.location.line
+            column = location.column
         }
-        let offset = token.range.location + delta
-        return PL0Token(id: token.id, kind: token.kind, lexeme: token.lexeme,
-                        range: SourceRange(location: offset, length: token.range.length),
-                        location: SourceLocation(offset: offset, line: line, column: column))
-    }
-
-    private func relocate(_ diagnostic: ParseDiagnostic, delta: Int) -> ParseDiagnostic {
-        ParseDiagnostic(severity: diagnostic.severity, message: diagnostic.message,
-                        range: SourceRange(location: diagnostic.range.location + delta,
-                                           length: diagnostic.range.length))
-    }
-
-    private func relocate(_ token: PL0LosslessToken, delta: Int,
-                          oldAnchor: PL0Token, newAnchor: PL0Token) -> PL0LosslessToken {
-        let line: Int
-        let column: Int
-        if token.location.line == oldAnchor.location.line {
-            line = newAnchor.location.line
-            column = newAnchor.location.column
-                + token.location.column - oldAnchor.location.column
-        } else {
-            line = newAnchor.location.line + token.location.line - oldAnchor.location.line
-            column = token.location.column
-        }
-        let offset = token.range.location + delta
-        return PL0LosslessToken(
-            id: token.id, kind: token.kind, lexeme: token.lexeme,
-            range: SourceRange(location: offset, length: token.range.length),
+        let offset = range.location + delta
+        return PL0Token(
+            id: id, kind: kind, lexeme: lexeme,
+            range: SourceRange(location: offset, length: range.length),
             location: SourceLocation(offset: offset, line: line, column: column))
+    }
+}
+
+extension PL0LosslessToken: IncrementalLexicalElement {
+    public var incrementalID: String { id }
+    public var incrementalTokenID: String? {
+        if case .token = kind { id } else { nil }
+    }
+    public var incrementalRange: Range<Int> { range.location..<range.end }
+
+    public func relocated(by delta: Int,
+                          from oldAnchor: LexicalPosition,
+                          to newAnchor: LexicalPosition) -> PL0LosslessToken {
+        let line: Int
+        let column: Int
+        if location.line == oldAnchor.line {
+            line = newAnchor.line
+            column = newAnchor.column + location.column - oldAnchor.column
+        } else {
+            line = newAnchor.line + location.line - oldAnchor.line
+            column = location.column
+        }
+        let offset = range.location + delta
+        return PL0LosslessToken(
+            id: id, kind: kind, lexeme: lexeme,
+            range: SourceRange(location: offset, length: range.length),
+            location: SourceLocation(offset: offset, line: line, column: column))
+    }
+}
+
+extension ParseDiagnostic: IncrementalLexicalDiagnostic {
+    public var incrementalRange: Range<Int> { range.location..<range.end }
+
+    public func relocated(by delta: Int) -> ParseDiagnostic {
+        ParseDiagnostic(
+            severity: severity, message: message,
+            range: SourceRange(location: range.location + delta, length: range.length),
+            expected: expected)
     }
 }

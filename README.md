@@ -7,6 +7,10 @@ The package was extracted from ModEdit so no parser or language functionality
 depends on an editor application. ModEdit is now one client alongside grammar
 and parser workbenches.
 
+Incremental tokenization is supplied by Lexer's generic
+`RestartAndConvergeTokenizer`; this package provides only the PL/0 scanner and
+the conformances that describe its tokens, trivia, and diagnostics.
+
 ## Products
 
 - `PL0Language` — grammar-backed lexer, parser front ends, recovery model,
