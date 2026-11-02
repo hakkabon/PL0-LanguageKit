@@ -9,6 +9,7 @@ let package = Package(
     products: [
         .library(name: "PL0Language", targets: ["PL0Language"]),
         .library(name: "PL0Conformance", targets: ["PL0Conformance"]),
+        .library(name: "PL0FrontendConformance", targets: ["PL0FrontendConformance"]),
         .library(
             name: "LanguageExperimentProtocol",
             targets: ["LanguageExperimentProtocol"]),
@@ -49,11 +50,17 @@ let package = Package(
             ],
             resources: [.process("Resources")]),
         .target(name: "PL0Conformance"),
+        .target(
+            name: "PL0FrontendConformance",
+            dependencies: ["PL0Language", "PL0Conformance"]),
         .testTarget(
             name: "PL0LanguageTests",
             dependencies: ["PL0Language", "PL0Conformance"]),
         .testTarget(
             name: "LanguageExperimentProtocolTests",
             dependencies: ["LanguageExperimentProtocol"]),
+        .testTarget(
+            name: "PL0FrontendConformanceTests",
+            dependencies: ["PL0FrontendConformance"]),
     ]
 )

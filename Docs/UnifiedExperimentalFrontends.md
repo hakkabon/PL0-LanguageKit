@@ -47,8 +47,10 @@ in all three consumers instead of only in an isolated parser experiment.
 * Incremental session state is discarded by `reset`, including its prepared
   comparison input.
 
-This phase unifies orchestration inside ModEdit. It does not duplicate parser
-algorithms: the broad comparison family continues to come directly from the
-Grammar/Parser ecosystem packages. The next integration step is a shared
-package-level language-session contract that Grammar-Workbench, Grammar-REPL,
-and ModEdit can all adopt without depending on the PL/0 target.
+`PL0FrontendConformance` now supplies the shared package-level experiment
+runner. ModEdit, Grammar-REPL, and Grammar-Workbench each expose a separate
+headless executable that runs the same accepted/recovery corpus through all
+three PL/0 engines. Their reports normalize away front-end labels and timing,
+then compare grammar identity, token evidence, diagnostics, recovery, status,
+engine paths, and syntax fingerprints. Parser algorithms remain in their
+owning packages; the three front ends only invoke and report them.
