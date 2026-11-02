@@ -18,6 +18,7 @@ public enum ExperimentContractError: Error, Equatable, Sendable, LocalizedError 
     case mismatchedSourceLength
     case inconsistentRevision
     case invalidExecutionPath
+    case unsupportedReuseDimension(String)
 
     public var errorDescription: String? {
         switch self {
@@ -32,6 +33,8 @@ public enum ExperimentContractError: Error, Equatable, Sendable, LocalizedError 
         case .mismatchedSourceLength: "The source text does not match its declared length."
         case .inconsistentRevision: "Experiment components refer to different document revisions."
         case .invalidExecutionPath: "Fallback metadata is inconsistent with the effective parser engine."
+        case .unsupportedReuseDimension(let dimension):
+            "Reuse dimension '\(dimension)' is not published by this experiment schema."
         }
     }
 }
@@ -317,7 +320,8 @@ public struct RecoveryEvidence: Codable, Hashable, Sendable {
 /// Reuse is intentionally multidimensional. Token, parser-state, syntax,
 /// forest, and semantic reuse are never combined into a misleading percentage.
 public enum ReuseDimension: String, Codable, Hashable, Sendable {
-    case tokens, parserStates, syntaxNodes, chartColumns, forestNodes, semanticNodes
+    case tokens, parserStates, syntaxNodes, chartColumns, chartFacts
+    case forestNodes, semanticNodes, irNodes
 }
 
 public struct ReuseMeasurement: Codable, Hashable, Sendable {
@@ -357,6 +361,36 @@ public struct ReuseEvidence: Codable, Hashable, Sendable {
         self.incremental = incremental
         self.baseRevision = baseRevision
         self.measurements = measurements.sorted { $0.dimension.rawValue < $1.dimension.rawValue }
+    }
+}
+
+extension LanguageExperimentProtocol {
+    /// Namespace factories avoid type-name collisions for clients that also
+    /// import IncrementalParsing's open reuse vocabulary.
+    public static func reuseMeasurement(
+        dimension rawDimension: String,
+        reused: Int,
+        rebuilt: Int,
+        invalidated: Int? = nil,
+        strategy: String
+    ) throws -> ReuseMeasurement {
+        guard let dimension = ReuseDimension(rawValue: rawDimension) else {
+            throw ExperimentContractError.unsupportedReuseDimension(rawDimension)
+        }
+        return try ReuseMeasurement(
+            dimension: dimension, reused: reused, rebuilt: rebuilt,
+            invalidated: invalidated, strategy: strategy)
+    }
+
+    public static func reuseEvidence(
+        incremental: Bool,
+        baseRevision: UInt64?,
+        measurements: [ReuseMeasurement]
+    ) throws -> ReuseEvidence {
+        try ReuseEvidence(
+            incremental: incremental,
+            baseRevision: baseRevision,
+            measurements: measurements)
     }
 }
 

@@ -1,5 +1,6 @@
 import Foundation
 import Lexer
+import IncrementalParsing
 
 public typealias IncrementalLexMetrics = RestartAndConvergeMetrics
 
@@ -27,6 +28,20 @@ public struct PL0IncrementalTokenizer: Sendable {
         }
         let result = tokenizer.tokenize(
             revision: snapshot.version, text: snapshot.text, edit: edit)
+        return IncrementalLexResult(
+            version: result.revision,
+            lexed: LexResult(
+                tokens: result.output.tokens,
+                losslessTokens: result.output.elements,
+                diagnostics: result.output.diagnostics),
+            metrics: result.metrics)
+    }
+
+    public mutating func tokenize(
+        _ snapshot: IncrementalParsing.SourceSnapshot,
+        change: IncrementalParsing.SourceChange? = nil
+    ) -> IncrementalLexResult {
+        let result = tokenizer.tokenize(snapshot: snapshot, change: change)
         return IncrementalLexResult(
             version: result.revision,
             lexed: LexResult(

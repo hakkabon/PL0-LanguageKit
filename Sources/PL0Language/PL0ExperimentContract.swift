@@ -1,5 +1,6 @@
 import Foundation
 import LanguageExperimentProtocol
+import IncrementalParsing
 
 /// PL/0 projection into the shared, language-neutral experiment schema.
 /// Keeping this adapter outside the schema target prevents PL/0 token and tree
@@ -172,28 +173,28 @@ public extension ParseResult {
     ) throws -> ReuseEvidence {
         let lex = metrics.incrementalLexing
         let parsing = metrics.incrementalParsing
-        var values = [try ReuseMeasurement(
+        var values = [IncrementalParsing.ReuseMeasurement(
             dimension: .tokens,
             reused: lex.reusedPrefixTokenCount + lex.reusedSuffixTokenCount,
             rebuilt: lex.generatedTokenCount,
             strategy: lex.incremental ? "restart-and-converge" : "full-tokenization")]
-        values.append(try ReuseMeasurement(
+        values.append(IncrementalParsing.ReuseMeasurement(
             dimension: .syntaxNodes, reused: parsing.reusedNodeCount,
             rebuilt: parsing.parsedNodeCount,
             strategy: parsing.incremental ? "stable-token-region-cache" : "full-parse"))
         if let semanticReuse {
-            values.append(try ReuseMeasurement(
+            values.append(IncrementalParsing.ReuseMeasurement(
                 dimension: .semanticNodes,
                 reused: semanticReuse.reusedSymbolCount
                     + semanticReuse.reusedReferenceCount,
                 rebuilt: semanticReuse.rebuiltSymbolCount
                     + semanticReuse.rebuiltReferenceCount,
-                invalidated: semanticReuse.dependencyInvalidationCount,
+                removed: semanticReuse.dependencyInvalidationCount,
                 strategy: semanticReuse.incremental
                     ? "stable-binding-dependency-cache" : "full-semantic-analysis"))
         }
         if case .earley(let artifact) = algorithmArtifact {
-            values.append(try ReuseMeasurement(
+            values.append(IncrementalParsing.ReuseMeasurement(
                 dimension: .chartColumns,
                 reused: artifact.reusedChartColumnCount,
                 rebuilt: max(0, artifact.recognition.consumedTokenCount + 1
@@ -212,9 +213,10 @@ public extension ParseResult {
         let inferredBase = incremental ? (semanticReuse?.baseVersion
             ?? snapshot.edit?.baseVersion
             ?? (snapshot.version > 0 ? snapshot.version - 1 : 0)) : nil
-        return try ReuseEvidence(incremental: incremental,
-                                 baseRevision: inferredBase,
-                                 measurements: values)
+        return try IncrementalExecutionEvidence(
+            strategy: incremental ? .incremental : .full,
+            measurements: values
+        ).experimentReuseEvidence(baseRevision: inferredBase)
     }
 
     private func measurementsForExperiment() throws -> [ExperimentMeasurement] {

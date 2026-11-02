@@ -74,6 +74,22 @@ struct LanguageExperimentProtocolTests {
         #expect(evidence.measurements[1].reused == 9)
     }
 
+    @Test func namespaceFactoriesAcceptPublishedDimensionsAndRejectUnknownOnes() throws {
+        let measurement = try LanguageExperimentProtocol.reuseMeasurement(
+            dimension: "irNodes", reused: 2, rebuilt: 1,
+            invalidated: 1, strategy: "stable-ir")
+        let evidence = try LanguageExperimentProtocol.reuseEvidence(
+            incremental: true, baseRevision: 3,
+            measurements: [measurement])
+        #expect(evidence.measurements.map(\.dimension) == [.irNodes])
+
+        #expect(throws: ExperimentContractError.unsupportedReuseDimension("mystery")) {
+            try LanguageExperimentProtocol.reuseMeasurement(
+                dimension: "mystery", reused: 0, rebuilt: 0,
+                strategy: "none")
+        }
+    }
+
     private func makeRun() throws -> ParseExperimentRun {
         let text = "x."
         let document = try makeDocument(text: text)

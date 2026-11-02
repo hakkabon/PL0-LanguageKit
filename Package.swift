@@ -18,6 +18,7 @@ let package = Package(
         .package(url: "https://github.com/hakkabon/Grammar.git", .upToNextMinor(from: "0.3.0")),
         .package(path: "../Parser"),
         .package(path: "../Lexer"),
+        .package(path: "../Incremental-Parsing"),
         .package(url: "https://github.com/hakkabon/Earley-Parser.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/CYK-Parser.git", .upToNextMinor(from: "0.2.0")),
         .package(url: "https://github.com/hakkabon/RNGLR-Parser.git", .upToNextMinor(from: "0.2.1")),
@@ -41,6 +42,7 @@ let package = Package(
                 .product(name: "Grammar", package: "Grammar"),
                 .product(name: "Parser", package: "Parser"),
                 .product(name: "Lexer", package: "Lexer"),
+                .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
                 .product(name: "Earley-Parser", package: "Earley-Parser"),
                 .product(name: "CYK-Parser", package: "CYK-Parser"),
                 .product(name: "RNGLR-Parser", package: "RNGLR-Parser"),
@@ -55,7 +57,10 @@ let package = Package(
             dependencies: ["PL0Language", "PL0Conformance"]),
         .testTarget(
             name: "PL0LanguageTests",
-            dependencies: ["PL0Language", "PL0Conformance"]),
+            dependencies: [
+                "PL0Language", "PL0Conformance",
+                .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
+            ]),
         .testTarget(
             name: "LanguageExperimentProtocolTests",
             dependencies: ["LanguageExperimentProtocol"]),

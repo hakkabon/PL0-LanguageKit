@@ -24,6 +24,12 @@ diagnostic conformances; it does not own the reuse algorithm.
 Every cache is discarded if the edit cannot be proven to follow the cached
 revision or if the grammar artifact changes.
 
+Phase 9 adds compatibility bridges to the shared `IncrementalParsing`
+snapshot, batch, artifact-identity, recovery, reuse, and fallback contracts.
+Single-edit snapshots retain the existing PL/0 incremental hint; multi-edit
+batches never invent one and therefore take the safe full-scan path. Experiment
+reuse evidence is now projected from the shared multidimensional vocabulary.
+
 ## Reference parser
 
 The region proof, descendant-cache preservation, relocation, and recovery
