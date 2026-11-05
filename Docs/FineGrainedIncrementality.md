@@ -81,16 +81,20 @@ tests also verify recovered-region replay against a fresh parse.
 
 ## Deliberate boundary
 
-The reference LL and semantic passes now perform genuine fine-grained reuse.
-The linked LR and Earley packages currently expose only stable-prefix adapter
-evidence; ModEdit does not label that as native parser-state reuse. Genuine LR
-stack checkpoints, Earley dependency invalidation, forest-node reuse, and
-incremental Compiler IR require reusable-state APIs in their owning ecosystem
-packages. Those algorithms should be added there and consumed by ModEdit rather
-than duplicated locally.
+The reference LL and semantic passes perform genuine fine-grained reuse. The
+generated LR session now consumes LR-Parsing's native stack checkpoints and
+exports its `parserStates` evidence. The source-positioned LR tree is still
+projected by the normal parser adapter and checked against clean execution.
+
+Earley no longer labels a stable token prefix as chart reuse. Its adapter emits
+the stable `pl0.earley.fullReparse` fallback until Earley-Parser's
+dependency-indexed arena is connected to live chart construction. RNGLR's
+graph/forest arenas and Compiler's semantic/IR sessions likewise remain
+owner-package facilities awaiting a PL/0 adapter with the required semantics.
 
 Bytecode lowering currently reruns after a semantic change. It consumes the
 incrementally validated semantic model and is checked against fresh lowering,
-but it does not yet claim instruction-fragment reuse. A future shared Compiler
-IR should give basic blocks stable identities and explicit dependency edges
-before incremental lowering is introduced.
+but it does not claim instruction-fragment reuse. Compiler now owns stable
+semantic and relocatable IR sessions, but its demonstration AST does not model
+PL/0 lexical levels and static links; adoption must preserve those semantics
+rather than forcing PL/0 through an incompatible lowering model.

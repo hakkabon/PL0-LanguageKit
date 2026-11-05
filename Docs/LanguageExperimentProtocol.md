@@ -102,11 +102,11 @@ is optional because not every existing engine can measure it truthfully.
 
 The PL/0 parse adapter exports token and syntax-node reuse for the reference
 parser. Exporting a `PL0Analysis` additionally records dependency-aware symbol
-and binding reuse as `semanticNodes`, including measured invalidations. The
-direct LR and Earley adapters currently export stable-prefix
-evidence rather than native stack/chart reuse. LR's stable token boundary is exported
-as a typed operational measurement until the LR engine can report a genuine
-count of reused parser states.
+and binding reuse as `semanticNodes`, including measured invalidations. The LR
+adapter exports native `parserStates` measurements from LR-Parsing checkpoints.
+The Earley adapter reports an explicit full-reparse fallback and zero reused
+chart columns until dependency-indexed chart storage is connected to the live
+parser loop.
 
 ## Invariants
 

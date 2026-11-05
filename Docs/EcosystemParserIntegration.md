@@ -81,10 +81,10 @@ deletion. These pieces remain and should be removed in subsequent migrations:
 * The PL/0 compiler and VM predate the direct Compiler dependency. PL/0
   semantic lowering should target Compiler's syntax adapter, IR, bytecode and
   runtime contracts, retaining only genuinely language-specific semantics.
-* Stable-prefix counts are currently adapter evidence, not native incremental
-  LR stack or Earley chart reuse. Genuine reusable states belong in the shared
-  parser packages so Grammar-REPL, Grammar-Workbench and ModEdit exercise the
-  same implementation.
+* Generated LR now uses LR-Parsing's native stack checkpoints. Earley stable
+  prefixes are no longer reported as chart reuse; the adapter discloses a full
+  reparse until Earley-Parser's dependency arena drives live chart construction.
+  RNGLR graph/forest arenas likewise still require parser-loop adoption.
 
 Tests cover the directly linked ten-engine family, editor-facing LR/Earley
 adapters, deterministic comparison serialization, recovery compatibility,

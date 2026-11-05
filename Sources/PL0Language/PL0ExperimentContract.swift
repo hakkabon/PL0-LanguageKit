@@ -193,20 +193,31 @@ public extension ParseResult {
                 strategy: semanticReuse.incremental
                     ? "stable-binding-dependency-cache" : "full-semantic-analysis"))
         }
-        if case .earley(let artifact) = algorithmArtifact {
-            values.append(IncrementalParsing.ReuseMeasurement(
-                dimension: .chartColumns,
-                reused: artifact.reusedChartColumnCount,
-                rebuilt: max(0, artifact.recognition.consumedTokenCount + 1
-                             - artifact.reusedChartColumnCount),
-                strategy: artifact.reusedChartColumnCount > 0
-                    ? "closed-prefix-chart" : "full-chart"))
+        if let artifactEvidence = algorithmArtifact.map({ artifact in
+            switch artifact {
+            case .lr(let value): value.incrementalEvidence
+            case .earley(let value): value.incrementalEvidence
+            }
+        }) {
+            let existing = Set(values.map(\.dimension))
+            // The core execution contract deliberately permits engine-specific
+            // dimensions, while the portable experiment schema is closed. Keep
+            // native detail on the parser artifact and project only dimensions
+            // that can be replayed by every experiment consumer.
+            let portableDimensions = Set([
+                "tokens", "parserStates", "syntaxNodes", "chartColumns",
+                "chartFacts", "forestNodes", "semanticNodes", "irNodes",
+            ])
+            values.append(contentsOf: artifactEvidence.measurements.filter {
+                !existing.contains($0.dimension)
+                    && portableDimensions.contains($0.dimension.rawValue)
+            })
         }
         let incremental = lex.incremental || parsing.incremental
             || semanticReuse?.incremental == true || {
             switch algorithmArtifact {
-            case .lr(let artifact): artifact.reusedTokenCount > 0
-            case .earley(let artifact): artifact.reusedChartColumnCount > 0
+            case .lr(let artifact): artifact.incrementalEvidence.strategy == .incremental
+            case .earley(let artifact): artifact.incrementalEvidence.strategy == .incremental
             case nil: false
             }
         }()

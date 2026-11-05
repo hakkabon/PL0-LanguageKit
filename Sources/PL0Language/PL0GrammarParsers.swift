@@ -1,6 +1,7 @@
 import Earley_Parser
 import Foundation
 import Grammar
+import IncrementalParsing
 import Lexer
 import LR_Parsing
 import Parser
@@ -33,6 +34,7 @@ public struct LRParseArtifact: Sendable, Equatable {
     public let root: SyntaxNode?
     public let trace: [LRTraceEvent]
     public let reusedTokenCount: Int
+    public let incrementalEvidence: IncrementalExecutionEvidence
 }
 
 public enum EarleyTraceAction: String, Sendable { case predict, scan, complete, accept, reuse }
@@ -68,6 +70,7 @@ public struct EarleyParseArtifact: Sendable, Equatable {
     public let forest: EarleyParseForest?
     public let trace: [EarleyTraceEvent]
     public let reusedChartColumnCount: Int
+    public let incrementalEvidence: IncrementalExecutionEvidence
 }
 public enum ParserAlgorithmArtifact: Sendable, Equatable {
     case lr(LRParseArtifact)
@@ -78,7 +81,7 @@ public enum ParserAlgorithmArtifact: Sendable, Equatable {
 public struct LRPL0Parser: PL0ParserProtocol {
     public let descriptor = ParserDescriptor(
         id: "slr-1", displayName: "Ecosystem SLR(1)",
-        capabilities: [.deterministicTree, .errorRecovery, .expectedTokens])
+        capabilities: [.deterministicTree, .errorRecovery, .expectedTokens, .incremental])
     public let languageKit: PL0LanguageKit
     public init(languageKit: PL0LanguageKit = .bundled) { self.languageKit = languageKit }
     public func recognize(_ input: ParserInput) -> GrammarRecognition { parseDetailed(input).recognition }
@@ -108,26 +111,44 @@ public struct EarleyPL0Parser: PL0ParserProtocol {
     }
 }
 
-/// Stable-input evidence is retained here; LR-Parsing still performs the run.
+/// Native LR checkpoint session. The ecosystem parse projection remains the
+/// source-positioned tree adapter, while reuse evidence comes only from
+/// LR-Parsing's real stack runtime.
 public struct IncrementalLRPL0Parser: Sendable {
-    private var tokenIDs: [String] = []
+    private let runtime = LRIncrementalRuntime()
+    private let table: LRRuntimeTable
     private let languageKit: PL0LanguageKit
-    public init(languageKit: PL0LanguageKit = .bundled) { self.languageKit = languageKit }
-    public mutating func parse(_ input: ParserInput) -> LRParseArtifact {
-        let next = input.tokens.filter { $0.kind != .endOfFile }.map(\.id)
-        let reused = commonPrefix(next, tokenIDs)
-        tokenIDs = next
-        let result = EcosystemPL0Engines.lr(input, languageKit: languageKit)
-        guard reused > 0 else { return result }
-        let reuse = LRTraceEvent(id: 0, action: .reuse, tokenIndex: reused,
-            state: 0, detail: "stable prefix; ecosystem engine reparsed", stackDepth: 0)
-        return LRParseArtifact(recognition: result.recognition, root: result.root,
-            trace: [reuse] + reidentified(result.trace), reusedTokenCount: reused)
+    public init(languageKit: PL0LanguageKit = .bundled) {
+        self.languageKit = languageKit
+        table = LR_Parsing.LRParser(
+            grammar: ecosystemGrammar(languageKit.artifact), algorithm: .slr)
+            .incrementalRuntimeTable()
     }
-    public mutating func reset() { tokenIDs = [] }
+    public mutating func parse(_ input: ParserInput) -> LRParseArtifact {
+        let next = input.tokens.filter { $0.kind != .endOfFile }
+            .map { $0.kind.grammarName }
+        let native = runtime.parse(next, table: table)
+        let result = EcosystemPL0Engines.lr(input, languageKit: languageKit)
+        guard native.resumedAtToken > 0 else {
+            return LRParseArtifact(
+                recognition: result.recognition, root: result.root,
+                trace: result.trace, reusedTokenCount: 0,
+                incrementalEvidence: native.evidence)
+        }
+        let reuse = LRTraceEvent(
+            id: 0, action: .reuse, tokenIndex: native.resumedAtToken,
+            state: native.result.checkpoints.last?.states.last ?? 0,
+            detail: "native LR stack checkpoint", stackDepth: native.reusedStateCount)
+        return LRParseArtifact(recognition: result.recognition, root: result.root,
+            trace: [reuse] + reidentified(result.trace),
+            reusedTokenCount: native.resumedAtToken,
+            incrementalEvidence: native.evidence)
+    }
+    public mutating func reset() { runtime.reset() }
 }
 
-/// Stable-input evidence is retained here; Earley-Parser rebuilds its chart.
+/// Earley remains a truthful full-parse adapter until the engine's dependency
+/// arena is connected to its chart construction loop.
 public struct IncrementalEarleyPL0Parser: Sendable {
     private var tokenIDs: [String] = []
     private let languageKit: PL0LanguageKit
@@ -138,10 +159,18 @@ public struct IncrementalEarleyPL0Parser: Sendable {
         tokenIDs = next
         let result = EcosystemPL0Engines.earley(input, languageKit: languageKit)
         guard reused > 0 else { return result }
-        let reuse = EarleyTraceEvent(id: 0, action: .reuse, chartIndex: reused,
-            production: "stable prefix; ecosystem engine reparsed", dot: 0, origin: 0)
-        return EarleyParseArtifact(recognition: result.recognition, forest: result.forest,
-            trace: [reuse] + reidentified(result.trace), reusedChartColumnCount: reused)
+        return EarleyParseArtifact(
+            recognition: result.recognition, forest: result.forest,
+            trace: result.trace, reusedChartColumnCount: 0,
+            incrementalEvidence: .init(
+                strategy: .fallback,
+                fallback: .init(
+                    code: "pl0.earley.fullReparse",
+                    detail: "Stable tokens were observed, but the Earley chart construction loop rebuilt its chart."),
+                measurements: [.init(
+                    dimension: .chartColumns, reused: 0,
+                    rebuilt: result.recognition.consumedTokenCount + 1,
+                    strategy: "full-chart")]))
     }
     public mutating func reset() { tokenIDs = [] }
 }
@@ -164,7 +193,8 @@ private enum EcosystemPL0Engines {
                     consumedTokenCount: consumed, configurationCount: outcome.trace.count,
                     maximumFrontierSize: maximumStack),
                 root: outcome.tree.flatMap { projectTree($0, source: stream.source, tokens: stream.tokens) },
-                trace: trace, reusedTokenCount: 0)
+                trace: trace, reusedTokenCount: 0,
+                incrementalEvidence: .init(strategy: .full))
         } catch { return rejectedLR(String(describing: error)) }
     }
 
@@ -181,11 +211,18 @@ private enum EcosystemPL0Engines {
                     consumedTokenCount: result.isSuccessful ? stream.tokens.count : 0,
                     configurationCount: max(result.bsr.count, trace.count),
                     maximumFrontierSize: snapshot?.nodes.count ?? 0),
-                forest: forest, trace: trace, reusedChartColumnCount: 0)
+                forest: forest, trace: trace, reusedChartColumnCount: 0,
+                incrementalEvidence: .init(
+                    strategy: .full,
+                    measurements: [.init(
+                        dimension: .chartColumns, reused: 0,
+                        rebuilt: result.isSuccessful ? stream.tokens.count + 1 : 0,
+                        strategy: "full-chart")]))
         } catch {
             return EarleyParseArtifact(recognition: GrammarRecognition(accepted: false,
                 consumedTokenCount: 0, configurationCount: 1, maximumFrontierSize: 0),
-                forest: nil, trace: [], reusedChartColumnCount: 0)
+                forest: nil, trace: [], reusedChartColumnCount: 0,
+                incrementalEvidence: .init(strategy: .full))
         }
     }
 
@@ -193,7 +230,8 @@ private enum EcosystemPL0Engines {
         LRParseArtifact(recognition: GrammarRecognition(accepted: false,
             consumedTokenCount: 0, configurationCount: 1, maximumFrontierSize: 0), root: nil,
             trace: [LRTraceEvent(id: 0, action: .error, tokenIndex: 0, state: 0,
-                                 detail: message, stackDepth: 0)], reusedTokenCount: 0)
+                                 detail: message, stackDepth: 0)], reusedTokenCount: 0,
+            incrementalEvidence: .init(strategy: .full))
     }
 }
 

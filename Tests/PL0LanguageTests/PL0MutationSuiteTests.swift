@@ -48,6 +48,7 @@ struct PL0MutationSuiteTests {
         }
         let fragments = PL0ConformanceCorpus.mutationFragments
         var observedReuse: [ParserEngine: Bool] = [:]
+        var observedEarleyFallback = false
 
         for _ in 0..<200 {
             let length = (text as NSString).length
@@ -84,8 +85,9 @@ struct PL0MutationSuiteTests {
                     observedReuse[engine] = observedReuse[engine] == true
                         || artifact.reusedTokenCount > 0
                 case let .earley(artifact):
-                    observedReuse[engine] = observedReuse[engine] == true
-                        || artifact.reusedChartColumnCount > 0
+                    observedEarleyFallback = observedEarleyFallback
+                        || artifact.incrementalEvidence.fallback?.code
+                            == "pl0.earley.fullReparse"
                 case nil:
                     observedReuse[engine] = observedReuse[engine] == true
                         || incremental.metrics.incrementalParsing.reusedTokenCount > 0
@@ -97,7 +99,8 @@ struct PL0MutationSuiteTests {
 
         #expect(observedReuse[.referenceLL] == true)
         #expect(observedReuse[.generatedLR] == true)
-        #expect(observedReuse[.earley] == true)
+        #expect(observedReuse[.earley] != true)
+        #expect(observedEarleyFallback)
     }
 
     @Test func mutationCampaignIsReproducibleForThePublishedSeed() {

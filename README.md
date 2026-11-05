@@ -15,6 +15,10 @@ Reference-parser region reuse and recovery replay are supplied by
 LL-Parsing's `LLRegionMemoizer`; PL/0 provides its rule keys and relocation
 conformances without owning the cache algorithm.
 
+Generated LR analysis consumes LR-Parsing's native resumable stack checkpoints
+and publishes engine-owned parser-state evidence. Earley currently discloses a
+full-chart fallback rather than treating an unchanged token prefix as reuse.
+
 ## Products
 
 - `PL0Language` — grammar-backed lexer, parser front ends, recovery model,
