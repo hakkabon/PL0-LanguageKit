@@ -25,6 +25,8 @@ full-chart fallback rather than treating an unchanged token prefix as reuse.
   formatter, semantic analysis, compiler, VM, and LSP adapter.
 - `PL0Conformance` — accepted, rejected, and mutation corpora shared by
   independent front ends.
+- `PL0FrontendConformance` — cross-product conformance plus the versioned
+  `PL0ProductCampaign` measurement and release gate.
 - `LanguageExperimentProtocol` — transport-neutral experiment and reuse
   evidence values. This remains a separate module so it can move lower in the
   package graph later without changing PL/0 APIs.

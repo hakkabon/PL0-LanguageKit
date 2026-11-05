@@ -1,3 +1,4 @@
+import IncrementalParsing
 import PL0FrontendConformance
 import Testing
 
@@ -23,5 +24,38 @@ struct PL0FrontendConformanceTests {
         let agreement = PL0FrontendExperimentSuite.compare([modEdit, workbench])
         #expect(!agreement.equivalent)
         #expect(agreement.mismatchDescriptions.count == 1)
+    }
+
+    @Test func productCampaignIsPortableEquivalentAndReleaseGated() async throws {
+        let measurementProtocol = IncrementalMeasurementProtocol(
+            id: "pl0-product-campaign-test",
+            warmupIterations: 0,
+            measurementIterations: 1)
+        let environment = IncrementalMeasurementEnvironment(
+            hostID: "test", operatingSystem: "test",
+            architecture: "test", swiftVersion: "test")
+        let first = try await PL0ProductCampaign.run(
+            environment: environment,
+            protocol: measurementProtocol,
+            clock: { 0 })
+        let second = try await PL0ProductCampaign.run(
+            environment: environment,
+            protocol: measurementProtocol,
+            clock: { 0 })
+
+        #expect(first.allOperationsEquivalent)
+        #expect(first.evidenceFingerprint == second.evidenceFingerprint)
+        #expect(first.measurementFingerprint == second.measurementFingerprint)
+        #expect(Set(first.scenarios.map(\.id)) == Set(PL0ProductCampaign.scenarios.map(\.id)))
+        #expect(first.summaries.first {
+            $0.scenarioID == "edit.earley.disclosure"
+        }?.fallbackCount == 1)
+
+        let gate = first.evaluate(PL0ProductCampaign.releaseBudgets(
+            protocol: measurementProtocol))
+        #expect(gate.passed, Comment(rawValue: gate.violations.joined(separator: "\n")))
+
+        let decoded = try IncrementalMeasurementReport.decode(first.json())
+        #expect(decoded == first)
     }
 }

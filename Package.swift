@@ -54,7 +54,12 @@ let package = Package(
         .target(name: "PL0Conformance"),
         .target(
             name: "PL0FrontendConformance",
-            dependencies: ["PL0Language", "PL0Conformance"]),
+            dependencies: [
+                "PL0Language", "PL0Conformance",
+                .product(
+                    name: "IncrementalParsing",
+                    package: "Incremental-Parsing"),
+            ]),
         .testTarget(
             name: "PL0LanguageTests",
             dependencies: [
@@ -66,6 +71,11 @@ let package = Package(
             dependencies: ["LanguageExperimentProtocol"]),
         .testTarget(
             name: "PL0FrontendConformanceTests",
-            dependencies: ["PL0FrontendConformance"]),
+            dependencies: [
+                "PL0FrontendConformance",
+                .product(
+                    name: "IncrementalParsing",
+                    package: "Incremental-Parsing"),
+            ]),
     ]
 )

@@ -65,6 +65,42 @@ extension ParserReuseMetrics {
     }
 }
 
+extension IncrementalLexMetrics {
+    /// Product-level evidence for the restart-and-converge tokenizer. Prefix
+    /// and suffix reuse are two regions of the same token dimension and can be
+    /// added without mixing unlike units.
+    public var incrementalEvidence: IncrementalParsing.IncrementalExecutionEvidence {
+        .init(
+            strategy: incremental ? .incremental : .full,
+            measurements: [
+                .init(
+                    dimension: .tokens,
+                    reused: reusedPrefixTokenCount + reusedSuffixTokenCount,
+                    rebuilt: generatedTokenCount,
+                    strategy: incremental
+                        ? "restart-and-converge" : "full-tokenization"),
+            ])
+    }
+}
+
+extension PL0SemanticReuseMetrics {
+    /// Semantic bindings are kept separate from syntax and parser-state reuse.
+    public var incrementalEvidence: IncrementalParsing.IncrementalExecutionEvidence {
+        .init(
+            strategy: incremental ? .incremental : .full,
+            measurements: [
+                .init(
+                    dimension: .semanticNodes,
+                    reused: reusedSymbolCount + reusedReferenceCount,
+                    rebuilt: rebuiltSymbolCount + rebuiltReferenceCount,
+                    removed: dependencyInvalidationCount,
+                    strategy: incremental
+                        ? "stable-binding-dependency-cache"
+                        : "full-semantic-analysis"),
+            ])
+    }
+}
+
 extension IncrementalParsing.IncrementalExecutionEvidence {
     /// Projects shared operational evidence into the versioned experiment
     /// envelope without merging independent reuse dimensions.
