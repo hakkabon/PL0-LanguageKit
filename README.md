@@ -22,7 +22,8 @@ full-chart fallback rather than treating an unchanged token prefix as reuse.
 ## Products
 
 - `PL0Language` — grammar-backed lexer, parser front ends, recovery model,
-  formatter, semantic analysis, compiler, VM, and LSP adapter.
+  formatter, semantic analysis, compiler, VM, LSP adapter, and the shared
+  `PL0Provider` language-provider entry point.
 - `PL0Conformance` — accepted, rejected, and mutation corpora shared by
   independent front ends.
 - `PL0FrontendConformance` — cross-product conformance plus the versioned
