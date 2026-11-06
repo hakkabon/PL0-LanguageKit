@@ -1,4 +1,5 @@
 import Foundation
+import Grammar
 import LanguageExperimentProtocol
 
 public enum PL0LanguageKitError: Error, Sendable, Equatable, CustomStringConvertible {
@@ -55,6 +56,7 @@ public struct PL0GrammarArtifact: Sendable, Equatable {
     public let tokenDefinitions: [PL0TokenDefinition]
     public let skipPatterns: [String]
     public let productions: [PL0ProductionDefinition]
+    public let lexicalSpecification: LexicalSpecification
 
     public var grammarIdentity: GrammarArtifactIdentity {
         // Compilation has already validated these values.
@@ -97,9 +99,22 @@ public struct PL0LanguageKit: Sendable, Equatable {
 
     public static func compile(source: String, revision: UInt64 = 1,
                                artifactID: String = artifactID) throws -> PL0LanguageKit {
-        let raw = try GrammarSourceParser(source: source).parse()
+        let parser = GrammarParser(grammar: source)
+        let syntaxTree = parser.parse()
+        guard parser.diagnostics.isEmpty else {
+            throw PL0LanguageKitError.malformedProduction(
+                parser.diagnostics.map(\.description).joined(separator: "; "))
+        }
+        let specification = parser.lexicalSpecification
+        let converter = StandardNotation()
+        let converted = converter.rewriteToStandardNotation(syntax: syntaxTree)
+        let grammar = Grammar(
+            productions: converted.0,
+            start: NonTerminal(name: converted.start),
+            lexicalTokens: converted.lexical)
+
         let typedNames = Set(PL0TokenKind.grammarTerminals.map(\.grammarName))
-        let declaredNames = Set(raw.tokens.map(\.name))
+        let declaredNames = Set(specification.significantRules.map(\.name))
         let missing = typedNames.subtracting(declaredNames).sorted()
         let unexpected = declaredNames.subtracting(typedNames).sorted()
         guard missing.isEmpty, unexpected.isEmpty else {
@@ -107,34 +122,44 @@ public struct PL0LanguageKit: Sendable, Equatable {
                 missing: missing, unexpected: unexpected)
         }
 
-        let definitions = try raw.tokens.map { token -> PL0TokenDefinition in
-            guard let kind = PL0TokenKind(grammarName: token.name) else {
-                throw PL0LanguageKitError.unsupportedToken(token.name)
+        let definitions = try specification.significantRules.map { rule -> PL0TokenDefinition in
+            guard let kind = PL0TokenKind(grammarName: rule.name) else {
+                throw PL0LanguageKitError.unsupportedToken(rule.name)
             }
-            return PL0TokenDefinition(name: token.name, pattern: token.pattern, kind: kind)
+            return PL0TokenDefinition(
+                name: rule.name, pattern: rule.matcher.displaySource, kind: kind)
         }
-        let nonterminals = Set(raw.productions.map(\.lhs))
-        guard nonterminals.contains(raw.start) else {
-            throw PL0LanguageKitError.duplicateOrMissingStart(raw.start)
+        let nonterminals = Set(grammar.productions.map { $0.goal.name })
+        guard nonterminals.contains(grammar.start.name) else {
+            throw PL0LanguageKitError.duplicateOrMissingStart(grammar.start.name)
         }
         var productions: [PL0ProductionDefinition] = []
-        for (ordinal, production) in raw.productions.enumerated() {
+        for (ordinal, production) in grammar.productions.enumerated() {
             var symbols: [PL0GrammarSymbolDefinition] = []
-            for symbol in production.rhs {
-                if declaredNames.contains(symbol) {
-                    guard let kind = PL0TokenKind(grammarName: symbol) else {
-                        throw PL0LanguageKitError.unsupportedToken(symbol)
+            for symbol in production.rule {
+                switch symbol {
+                case .terminal(let terminal):
+                    guard let name = grammar.lexicalTokens.first(where: {
+                        $0.value == terminal && declaredNames.contains($0.key)
+                    })?.key else {
+                        throw PL0LanguageKitError.unknownSymbol(
+                            production: production.goal.name,
+                            symbol: terminal.description)
                     }
-                    symbols.append(.terminal(name: symbol, kind: kind))
-                } else if nonterminals.contains(symbol) {
-                    symbols.append(.nonterminal(symbol))
-                } else {
+                    guard let kind = PL0TokenKind(grammarName: name) else {
+                        throw PL0LanguageKitError.unsupportedToken(name)
+                    }
+                    symbols.append(.terminal(name: name, kind: kind))
+                case .nonTerminal(let nonterminal):
+                    symbols.append(.nonterminal(nonterminal.name))
+                case .metaSymbol(let meta):
                     throw PL0LanguageKitError.unknownSymbol(
-                        production: production.lhs, symbol: symbol)
+                        production: production.goal.name, symbol: meta.rawValue)
                 }
             }
             productions.append(PL0ProductionDefinition(
-                id: "p\(ordinal):\(production.lhs)", lhs: production.lhs, rhs: symbols))
+                id: "p\(ordinal):\(production.goal.name)",
+                lhs: production.goal.name, rhs: symbols))
         }
         let actualNonterminals = Set(PL0Nonterminal.allCases.map(\.rawValue))
         let missingNonterminals = actualNonterminals.subtracting(nonterminals).sorted()
@@ -146,19 +171,21 @@ public struct PL0LanguageKit: Sendable, Equatable {
 
         var keywords: [String: PL0TokenKind] = [:]
         var operators: [String: PL0TokenKind] = [:]
-        for definition in definitions {
-            guard let literal = regexLiteral(definition.pattern) else { continue }
+        for rule in specification.significantRules {
+            guard case .literal(let literal) = rule.matcher,
+                  let kind = PL0TokenKind(grammarName: rule.name) else { continue }
             if literal.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) }) {
-                keywords[literal.lowercased()] = definition.kind
+                keywords[literal.lowercased()] = kind
             } else {
-                operators[literal] = definition.kind
+                operators[literal] = kind
             }
         }
         let artifact = PL0GrammarArtifact(
             artifactID: artifactID, revision: revision, source: source,
             fingerprint: StableFingerprint.fnv1a64(source),
-            startSymbol: raw.start, tokenDefinitions: definitions,
-            skipPatterns: raw.skips, productions: productions)
+            startSymbol: grammar.start.name, tokenDefinitions: definitions,
+            skipPatterns: specification.triviaRules.map { $0.matcher.displaySource },
+            productions: productions, lexicalSpecification: specification)
         return PL0LanguageKit(artifact: artifact,
                               keywordKinds: keywords, operatorKinds: operators)
     }
@@ -203,98 +230,6 @@ public enum PL0Nonterminal: String, CaseIterable, Sendable {
     case factor = "Factor"
 }
 
-private struct RawGrammar {
-    struct Token { let name: String; let pattern: String }
-    struct Production { let lhs: String; let rhs: [String] }
-    let start: String
-    let tokens: [Token]
-    let skips: [String]
-    let productions: [Production]
-}
-
-private struct GrammarSourceParser {
-    let source: String
-
-    func parse() throws -> RawGrammar {
-        var startSymbols: [String] = []
-        var tokens: [RawGrammar.Token] = []
-        var skips: [String] = []
-        var productionLines: [String] = []
-        for (index, substring) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
-            let line = substring.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !line.isEmpty else { continue }
-            if line.hasPrefix("%start ") {
-                startSymbols.append(String(line.dropFirst(7)).trimmingCharacters(in: .whitespaces))
-            } else if line.hasPrefix("%token ") {
-                let body = String(line.dropFirst(7))
-                guard let separator = body.firstIndex(where: { $0 == " " || $0 == "\t" }),
-                      let pattern = delimitedPattern(String(body[separator...])) else {
-                    throw PL0LanguageKitError.malformedDirective(line: index + 1, text: line)
-                }
-                let name = String(body[..<separator])
-                guard !tokens.contains(where: { $0.name == name }) else {
-                    throw PL0LanguageKitError.duplicateToken(name)
-                }
-                tokens.append(.init(name: name, pattern: pattern))
-            } else if line.hasPrefix("%skip ") {
-                guard let pattern = delimitedPattern(String(line.dropFirst(6))) else {
-                    throw PL0LanguageKitError.malformedDirective(line: index + 1, text: line)
-                }
-                skips.append(pattern)
-            } else if line.hasPrefix("%") {
-                throw PL0LanguageKitError.malformedDirective(line: index + 1, text: line)
-            } else {
-                productionLines.append(line)
-            }
-        }
-        guard startSymbols.count == 1, let start = startSymbols.first else {
-            throw PL0LanguageKitError.duplicateOrMissingStart(startSymbols.first ?? "")
-        }
-        var productions: [RawGrammar.Production] = []
-        for statement in productionLines.joined(separator: " ").split(separator: ";", omittingEmptySubsequences: true) {
-            let text = statement.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let colon = text.firstIndex(of: ":") else {
-                throw PL0LanguageKitError.malformedProduction(text)
-            }
-            let lhs = text[..<colon].trimmingCharacters(in: .whitespaces)
-            guard !lhs.isEmpty else { throw PL0LanguageKitError.malformedProduction(text) }
-            let body = text[text.index(after: colon)...]
-            for alternative in body.split(separator: "|", omittingEmptySubsequences: false) {
-                let rhs = alternative.split(whereSeparator: \Character.isWhitespace).map(String.init)
-                productions.append(.init(lhs: lhs, rhs: rhs))
-            }
-        }
-        return RawGrammar(start: start, tokens: tokens, skips: skips,
-                          productions: productions)
-    }
-}
-
-private func delimitedPattern(_ text: String) -> String? {
-    let trimmed = text.trimmingCharacters(in: .whitespaces)
-    guard trimmed.first == "/", trimmed.last == "/", trimmed.count >= 2 else { return nil }
-    return String(trimmed.dropFirst().dropLast())
-}
-
-private func regexLiteral(_ pattern: String) -> String? {
-    var result = ""
-    var index = pattern.startIndex
-    while index < pattern.endIndex {
-        let character = pattern[index]
-        if character == "\\" {
-            let next = pattern.index(after: index)
-            guard next < pattern.endIndex else { return nil }
-            if pattern[next] == "b", pattern.index(after: next) == pattern.endIndex { break }
-            result.append(pattern[next])
-            index = pattern.index(after: next)
-        } else {
-            guard !"[]+*?(){}|.^$".contains(character) else { return nil }
-            result.append(character)
-            index = pattern.index(after: index)
-        }
-    }
-    return result.isEmpty ? nil : result
-}
-
 extension PL0TokenKind {
     fileprivate static let grammarTerminals = allCases.filter {
         $0 != .invalid && $0 != .endOfFile
@@ -335,7 +270,7 @@ extension PL0TokenKind {
         }
     }
 
-    fileprivate init?(grammarName: String) {
+    init?(grammarName: String) {
         guard let kind = Self.grammarTerminals.first(where: { $0.grammarName == grammarName }) else {
             return nil
         }

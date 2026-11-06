@@ -7,9 +7,12 @@ The package was extracted from ModEdit so no parser or language functionality
 depends on an editor application. ModEdit is now one client alongside grammar
 and parser workbenches.
 
-Incremental tokenization is supplied by Lexer's generic
-`RestartAndConvergeTokenizer`; this package provides only the PL/0 scanner and
-the conformances that describe its tokens, trivia, and diagnostics.
+Grammar, lexical rules, trivia, and comment forms are compiled from the same
+BNF resource by `GrammarParser`. Batch scanning is supplied by Lexer's
+`GrammarDrivenLexer`, and incremental tokenization by
+`GrammarIncrementalTokenizer`. PL/0 retains only a typed projection for its
+public token API; it owns no grammar parser, scanner rules, or
+restart/convergence conformances.
 
 Reference-parser region reuse and recovery replay are supplied by
 LL-Parsing's `LLRegionMemoizer`; PL/0 provides its rule keys and relocation

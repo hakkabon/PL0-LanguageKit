@@ -1,57 +1,63 @@
-%start Program
-%token CONST /const\b/
-%token VAR /var\b/
-%token PROCEDURE /procedure\b/
-%token CALL /call\b/
-%token BEGIN /begin\b/
-%token END /end\b/
-%token IF /if\b/
-%token THEN /then\b/
-%token WHILE /while\b/
-%token DO /do\b/
-%token ODD /odd\b/
-%token IDENTIFIER /[A-Za-z_][A-Za-z0-9_]*/
-%token NUMBER /[0-9]+/
-%token ASSIGN /:=/
-%token NE /#/
-%token LE /<=/
-%token GE />=/
-%token LT /</
-%token GT />/
-%token PLUS /\+/
-%token MINUS /-/
-%token STAR /\*/
-%token SLASH /\//
-%token EQUAL /=/
-%token COMMA /,/
-%token SEMICOLON /;/
-%token PERIOD /\./
-%token LPAREN /\(/
-%token RPAREN /\)/
-%skip /\s+/
-%skip /\/\/[^\r\n]*/
-%skip /\/\*(?:[^*]|\*(?!\/))*\*\//
+> Program
 
-Program : Block PERIOD ;
-Block : ConstPart VarPart Procedures Statement ;
-ConstPart : CONST ConstDefinition MoreConsts SEMICOLON | ;
-ConstDefinition : IDENTIFIER EQUAL NUMBER ;
-MoreConsts : COMMA ConstDefinition MoreConsts | ;
-VarPart : VAR IDENTIFIER MoreVars SEMICOLON | ;
-MoreVars : COMMA IDENTIFIER MoreVars | ;
-Procedures : PROCEDURE IDENTIFIER SEMICOLON Block SEMICOLON Procedures | ;
-Statement : IDENTIFIER ASSIGN Expression
-          | CALL IDENTIFIER
-          | BEGIN Statement MoreStatements END
-          | IF Condition THEN Statement
-          | WHILE Condition DO Statement
-          | ;
-MoreStatements : SEMICOLON Statement MoreStatements | ;
-Condition : ODD Expression | Expression Relation Expression ;
-Relation : EQUAL | NE | LT | LE | GT | GE ;
-Expression : Sign Term MoreTerms ;
-Sign : PLUS | MINUS | ;
-MoreTerms : PLUS Term MoreTerms | MINUS Term MoreTerms | ;
-Term : Factor MoreFactors ;
-MoreFactors : STAR Factor MoreFactors | SLASH Factor MoreFactors | ;
-Factor : IDENTIFIER | NUMBER | LPAREN Expression RPAREN ;
+lexical {
+    keyword CONST = "const";
+    keyword VAR = "var";
+    keyword PROCEDURE = "procedure";
+    keyword CALL = "call";
+    keyword BEGIN = "begin";
+    keyword END = "end";
+    keyword IF = "if";
+    keyword THEN = "then";
+    keyword WHILE = "while";
+    keyword DO = "do";
+    keyword ODD = "odd";
+
+    token IDENTIFIER = /[A-Za-z_][A-Za-z0-9_]*/;
+    token NUMBER = /[0-9]+/;
+
+    symbol ASSIGN = ":=";
+    symbol NE = "#";
+    symbol LE = "<=";
+    symbol GE = ">=";
+    symbol LT = "<";
+    symbol GT = ">";
+    symbol PLUS = "+";
+    symbol MINUS = "-";
+    symbol STAR = "*";
+    symbol SLASH = "/";
+    symbol EQUAL = "=";
+    symbol COMMA = ",";
+    symbol SEMICOLON = ";";
+    symbol PERIOD = ".";
+    symbol LPAREN = "(";
+    symbol RPAREN = ")";
+
+    trivia WHITESPACE = /\s+/;
+    trivia LINE_COMMENT = lineComment("//");
+    trivia BLOCK_COMMENT = blockComment("/*", "*/");
+}
+
+Program ::= Block PERIOD;
+Block ::= ConstPart VarPart Procedures Statement;
+ConstPart ::= CONST ConstDefinition MoreConsts SEMICOLON | ε;
+ConstDefinition ::= IDENTIFIER EQUAL NUMBER;
+MoreConsts ::= COMMA ConstDefinition MoreConsts | ε;
+VarPart ::= VAR IDENTIFIER MoreVars SEMICOLON | ε;
+MoreVars ::= COMMA IDENTIFIER MoreVars | ε;
+Procedures ::= PROCEDURE IDENTIFIER SEMICOLON Block SEMICOLON Procedures | ε;
+Statement ::= IDENTIFIER ASSIGN Expression
+            | CALL IDENTIFIER
+            | BEGIN Statement MoreStatements END
+            | IF Condition THEN Statement
+            | WHILE Condition DO Statement
+            | ε;
+MoreStatements ::= SEMICOLON Statement MoreStatements | ε;
+Condition ::= ODD Expression | Expression Relation Expression;
+Relation ::= EQUAL | NE | LT | LE | GT | GE;
+Expression ::= Sign Term MoreTerms;
+Sign ::= PLUS | MINUS | ε;
+MoreTerms ::= PLUS Term MoreTerms | MINUS Term MoreTerms | ε;
+Term ::= Factor MoreFactors;
+MoreFactors ::= STAR Factor MoreFactors | SLASH Factor MoreFactors | ε;
+Factor ::= IDENTIFIER | NUMBER | LPAREN Expression RPAREN;

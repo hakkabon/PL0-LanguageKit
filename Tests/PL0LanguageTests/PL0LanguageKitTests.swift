@@ -17,8 +17,8 @@ struct PL0LanguageKitTests {
 
     @Test func lexicalClassificationComesFromGrammarArtifact() throws {
         let source = PL0LanguageKit.bundled.artifact.source
-            .replacingOccurrences(of: "%token CALL /call\\b/",
-                                  with: "%token CALL /invoke\\b/")
+            .replacingOccurrences(of: "keyword CALL = \"call\";",
+                                  with: "keyword CALL = \"invoke\";")
         let kit = try PL0LanguageKit.compile(source: source, revision: 2)
         let lexed = PL0Lexer(languageKit: kit).tokenize(
             SourceSnapshot(version: 1, text: "invoke p."))
@@ -63,7 +63,7 @@ struct PL0LanguageKitTests {
 
     @Test func compilerRejectsUnknownAndMissingTypedSymbols() {
         let source = PL0LanguageKit.bundled.artifact.source
-            .replacingOccurrences(of: "%token CALL /call\\b/\n", with: "")
+            .replacingOccurrences(of: "    keyword CALL = \"call\";\n", with: "")
 
         #expect(throws: PL0LanguageKitError.self) {
             try PL0LanguageKit.compile(source: source)

@@ -24,7 +24,7 @@ struct UnifiedFrontendTests {
 
     @Test func consumersUseTheInjectedLanguageKit() async throws {
         let grammar = PL0LanguageKit.bundled.artifact.source.replacingOccurrences(
-            of: "%token BEGIN /begin\\b/", with: "%token BEGIN /start\\b/")
+            of: "keyword BEGIN = \"begin\";", with: "keyword BEGIN = \"start\";")
         let kit = try PL0LanguageKit.compile(
             source: grammar, revision: 2, artifactID: "test.pl0.start")
         let frontend = PL0Frontend(languageKit: kit)

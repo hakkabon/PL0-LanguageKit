@@ -21,6 +21,16 @@ public struct ParseDiagnostic: Sendable, Equatable, Identifiable {
     }
 }
 
+extension ParseDiagnostic {
+    public func relocated(by delta: Int) -> ParseDiagnostic {
+        ParseDiagnostic(
+            severity: severity, message: message,
+            range: SourceRange(
+                location: range.location + delta, length: range.length),
+            expected: expected)
+    }
+}
+
 public enum RecoveryAction: Sendable, Equatable {
     case insert(kind: PL0TokenKind, at: Int)
     case delete(token: PL0Token)

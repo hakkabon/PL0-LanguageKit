@@ -96,7 +96,14 @@ struct GrammarWorkbenchBridgeTests {
     }
 
     private var validGrammar: String {
-        "%start Program\n%token PERIOD /\\./\n%skip /\\s+/\nProgram : PERIOD ;"
+        """
+        > Program
+        lexical {
+            symbol PERIOD = ".";
+            trivia WHITESPACE = /\\s+/;
+        }
+        Program ::= PERIOD;
+        """
     }
 }
 
