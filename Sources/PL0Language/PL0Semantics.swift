@@ -1,5 +1,6 @@
 import Foundation
 import LanguageExperimentProtocol
+import LanguageTooling
 
 public enum PL0SymbolKind: String, Sendable, Equatable, Codable {
     case constant, variable, procedure
@@ -72,6 +73,34 @@ public struct PL0SemanticModel: Sendable {
     public let diagnostics: [ParseDiagnostic]
     public let reuseMetrics: PL0SemanticReuseMetrics
 
+    /// Portable semantic graph consumed by shared definition, reference,
+    /// visibility, rename, and conformance algorithms.
+    public var toolingIndex: ToolingSemanticIndex {
+        ToolingSemanticIndex(
+            symbols: symbols.map { symbol in
+                ToolingSymbol(
+                    id: .init(symbol.id),
+                    name: symbol.name,
+                    kind: symbol.kind.toolingKind,
+                    declarationRange: symbol.declarationRange.incrementalRange,
+                    scopeID: .init(String(symbol.scopeID)),
+                    detail: symbol.toolingDetail,
+                    modifiers: ["declaration"])
+            },
+            references: references.map {
+                ToolingReference(
+                    symbolID: .init($0.symbolID),
+                    range: $0.range.incrementalRange)
+            },
+            scopes: scopes.map {
+                ToolingScope(
+                    id: .init(String($0.id)),
+                    parentID: $0.parentID.map { .init(String($0)) },
+                    range: $0.range.incrementalRange,
+                    symbolIDs: $0.symbolIDs.map { ToolingSymbolID($0) })
+            })
+    }
+
     public func symbol(id: String) -> PL0Symbol? {
         symbols.first { $0.id == id }
     }
@@ -98,6 +127,25 @@ public struct PL0SemanticModel: Sendable {
                   let next = scopes.first(where: { $0.id == parent }) else { break }
             scope = next
         }
+        return result
+    }
+}
+
+private extension PL0SymbolKind {
+    var toolingKind: ToolingSymbolKind {
+        switch self {
+        case .constant: .constant
+        case .variable: .variable
+        case .procedure: .function
+        }
+    }
+}
+
+private extension PL0Symbol {
+    var toolingDetail: String {
+        var result = "\(kind.rawValue) \(name)"
+        if let constantValue { result += " = \(constantValue)" }
+        if let slot { result += " · level \(lexicalLevel), slot \(slot)" }
         return result
     }
 }

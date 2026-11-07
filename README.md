@@ -18,6 +18,12 @@ Reference-parser region reuse and recovery replay are supplied by
 LL-Parsing's `LLRegionMemoizer`; PL/0 provides its rule keys and relocation
 conformances without owning the cache algorithm.
 
+Editor-neutral coordinates, completion values, semantic graph queries,
+semantic-token encoding, formatting mechanics, and tooling conformance checks
+are supplied by `Language-Tooling`. PL/0 retains its binding rules, semantic
+classification policy, formatting decisions, and transport adapter, while its
+native semantic model projects into the shared tooling graph.
+
 Generated LR analysis consumes LR-Parsing's native resumable stack checkpoints
 and publishes engine-owned parser-state evidence. Earley currently discloses a
 full-chart fallback rather than treating an unchanged token prefix as reuse.
