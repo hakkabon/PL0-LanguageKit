@@ -1,4 +1,5 @@
 import Foundation
+import LanguageToolingTesting
 import Testing
 @testable import PL0Language
 
@@ -24,6 +25,18 @@ struct SemanticsCompilerLSPTests {
         #expect(analysis.semantics.scopes.count == 2)
         #expect(analysis.semantics.references.count == 5)
         #expect(analysis.semantics.diagnostics.isEmpty)
+    }
+
+    @Test func semanticModelPublishesConformingSharedToolingGraph() async throws {
+        let source = "const limit = 3; var x; begin x := limit end."
+        let analysis = await PL0LanguageSession().analyze(
+            SourceSnapshot(version: 8, text: source))
+
+        try ToolingConformance.validate(
+            index: analysis.semantics.toolingIndex,
+            utf16Length: source.utf16.count)
+        #expect(analysis.semantics.toolingIndex.symbols.count
+            == analysis.semantics.symbols.count)
     }
 
     @Test func semanticDiagnosticsAreSharedByCompilerAndLSP() async throws {

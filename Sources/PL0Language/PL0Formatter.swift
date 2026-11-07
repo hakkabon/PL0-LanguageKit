@@ -1,4 +1,5 @@
 import Foundation
+import LanguageToolingFormatting
 
 public enum PL0FormatterError: Error, Sendable, Equatable, CustomStringConvertible {
     case invalidSource([ParseDiagnostic])
@@ -78,24 +79,23 @@ public struct PL0Formatter: Sendable {
 }
 
 private struct Writer {
-    let indentationWidth: Int
-    private var indentation = 0
-    private var lines: [String] = []
-    private var current = ""
+    private var output: FormattingWriter
     private var previousKind: PL0TokenKind?
     private var unarySignPending = false
 
-    init(indentationWidth: Int) { self.indentationWidth = indentationWidth }
+    init(indentationWidth: Int) {
+        output = FormattingWriter(indentationWidth: indentationWidth)
+    }
 
     mutating func write(_ token: PL0Token) {
         switch token.kind {
         case .begin:
             word(token.lexeme)
             newline()
-            indentation += 1
+            output.indent()
         case .end:
             newline()
-            indentation = max(0, indentation - 1)
+            output.dedent()
             word(token.lexeme)
         case .semicolon:
             trimTrailingSpace()
@@ -116,7 +116,7 @@ private struct Writer {
             append(")")
         case .plus, .minus:
             if isUnarySignPosition {
-                if current.last != "(" { space() }
+                if output.lastCharacter != "(" { space() }
                 append(token.lexeme)
                 unarySignPending = true
             } else {
@@ -126,7 +126,9 @@ private struct Writer {
              .star, .slash:
             space(); append(token.lexeme); space()
         case .const, .varKeyword, .procedure:
-            if !current.trimmingCharacters(in: .whitespaces).isEmpty { newline() }
+            if !output.currentLine.trimmingCharacters(in: .whitespaces).isEmpty {
+                newline()
+            }
             word(token.lexeme)
         case .identifier, .number, .call, .ifKeyword, .then, .whileKeyword,
              .doKeyword, .odd:
@@ -156,8 +158,7 @@ private struct Writer {
 
     mutating func finish() -> String {
         newline()
-        while lines.last?.isEmpty == true { lines.removeLast() }
-        return lines.joined(separator: "\n") + "\n"
+        return output.finish()
     }
 
     private mutating func word(_ text: String) {
@@ -166,7 +167,7 @@ private struct Writer {
             unarySignPending = false
             return
         }
-        if let last = current.last, !last.isWhitespace, last != "(" { space() }
+        if let last = output.lastCharacter, !last.isWhitespace, last != "(" { space() }
         append(text)
     }
 
@@ -177,24 +178,19 @@ private struct Writer {
     }
 
     private mutating func append(_ text: String) {
-        if current.isEmpty { current = String(repeating: " ", count: indentation * indentationWidth) }
-        current += text
+        output.append(text)
     }
 
     private mutating func space() {
-        guard !current.isEmpty, current.last?.isWhitespace == false else { return }
-        current.append(" ")
+        output.space()
     }
 
     private mutating func trimTrailingSpace() {
-        while current.last?.isWhitespace == true { current.removeLast() }
+        output.trimTrailingWhitespace()
     }
 
     private mutating func newline() {
-        trimTrailingSpace()
-        guard !current.isEmpty else { return }
-        lines.append(current)
-        current = ""
+        output.lineBreak()
         previousKind = nil
         unarySignPending = false
     }

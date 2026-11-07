@@ -19,6 +19,7 @@ let package = Package(
         .package(path: "../Parser"),
         .package(path: "../Lexer"),
         .package(path: "../Incremental-Parsing"),
+        .package(path: "../Language-Tooling"),
         .package(path: "../Earley-Parser"),
         .package(path: "../CYK-Parser"),
         .package(path: "../RNGLR-Parser"),
@@ -43,6 +44,10 @@ let package = Package(
                 .product(name: "Parser", package: "Parser"),
                 .product(name: "Lexer", package: "Lexer"),
                 .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
+                .product(name: "LanguageTooling", package: "Language-Tooling"),
+                .product(
+                    name: "LanguageToolingFormatting",
+                    package: "Language-Tooling"),
                 .product(name: "Earley-Parser", package: "Earley-Parser"),
                 .product(name: "CYK-Parser", package: "CYK-Parser"),
                 .product(name: "RNGLR-Parser", package: "RNGLR-Parser"),
@@ -65,6 +70,10 @@ let package = Package(
             dependencies: [
                 "PL0Language", "PL0Conformance",
                 .product(name: "IncrementalParsing", package: "Incremental-Parsing"),
+                .product(name: "LanguageTooling", package: "Language-Tooling"),
+                .product(
+                    name: "LanguageToolingTesting",
+                    package: "Language-Tooling"),
             ]),
         .testTarget(
             name: "LanguageExperimentProtocolTests",

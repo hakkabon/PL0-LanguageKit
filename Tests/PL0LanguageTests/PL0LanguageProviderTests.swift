@@ -1,5 +1,6 @@
 import Foundation
 import IncrementalParsing
+import LanguageTooling
 import PL0Language
 import Testing
 
@@ -50,5 +51,25 @@ struct PL0LanguageProviderTests {
         await #expect(throws: LanguageProviderError.inconsistentChange) {
             try await session.analyze(unrelated, change: change)
         }
+    }
+
+    @Test func providerPublishesSharedToolingOperations() async throws {
+        let source = "var value; begin value := 1 end."
+        let session = PL0Provider().makeToolingSession()
+        _ = try await session.analyze(.init(
+            text: source,
+            revision: .init(10)))
+        let referenceOffset = (source as NSString).range(
+            of: "value", options: .backwards).location
+        let position = SourceLineMap(source).position(of: referenceOffset)
+
+        let completions = try await session.completions(at: position)
+        let definition = try await session.definition(at: position)
+        let tokens = try await session.semanticTokens()
+
+        #expect(completions.contains { $0.label == "value" })
+        #expect(definition?.uri == "language-document://pl0")
+        #expect(definition?.range.start.character == 4)
+        #expect(!tokens.data.isEmpty)
     }
 }
