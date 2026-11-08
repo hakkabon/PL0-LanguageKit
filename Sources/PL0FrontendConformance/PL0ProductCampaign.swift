@@ -7,7 +7,7 @@ import PL0Language
 /// definition unchanged; they do not recreate fixtures or reinterpret reuse.
 public enum PL0ProductCampaign {
     public static let campaignProtocol = IncrementalMeasurementProtocol(
-        id: "pl0-product-campaign-v1",
+        id: "pl0-product-campaign-v2",
         warmupIterations: 1,
         measurementIterations: 3)
 
@@ -28,6 +28,8 @@ public enum PL0ProductCampaign {
                 minimum[.syntaxNodes] = 0.01
             case .parser where definition.engine == .generatedLR && definition.edit != nil:
                 minimum[.parserStates] = 0.01
+            case .parser where definition.engine == .earley && definition.edit != nil:
+                minimum[.chartFacts] = 0.01
             case .semantic:
                 minimum[.semanticNodes] = 0.01
             default:
@@ -36,8 +38,7 @@ public enum PL0ProductCampaign {
             return .init(
                 scenarioID: definition.scenario.id,
                 requireCleanEquivalence: true,
-                maximumFallbackCount: definition.engine == .earley && definition.edit != nil
-                    ? protocolValue.measurementIterations : 0,
+                maximumFallbackCount: 0,
                 minimumReuseRatios: minimum)
         }
     }
@@ -144,7 +145,7 @@ public enum PL0ProductCampaign {
             engine: .generatedLR, source: PL0ConformanceCorpus.mutationSeeds[2],
             edit: .init(needle: "4", replacement: "40"), target: .parser),
         .init(
-            scenario: .init(id: "edit.earley.disclosure", title: "Disclose Earley full-chart fallback"),
+            scenario: .init(id: "edit.earley.chart", title: "Resume native Earley chart after literal edit"),
             engine: .earley, source: PL0ConformanceCorpus.mutationSeeds[2],
             edit: .init(needle: "4", replacement: "40"), target: .parser),
         .init(

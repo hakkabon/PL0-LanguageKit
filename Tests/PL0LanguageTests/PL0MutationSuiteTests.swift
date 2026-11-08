@@ -48,7 +48,6 @@ struct PL0MutationSuiteTests {
         }
         let fragments = PL0ConformanceCorpus.mutationFragments
         var observedReuse: [ParserEngine: Bool] = [:]
-        var observedEarleyFallback = false
 
         for _ in 0..<200 {
             let length = (text as NSString).length
@@ -85,9 +84,8 @@ struct PL0MutationSuiteTests {
                     observedReuse[engine] = observedReuse[engine] == true
                         || artifact.reusedTokenCount > 0
                 case let .earley(artifact):
-                    observedEarleyFallback = observedEarleyFallback
-                        || artifact.incrementalEvidence.fallback?.code
-                            == "pl0.earley.fullReparse"
+                    observedReuse[engine] = observedReuse[engine] == true
+                        || artifact.reusedChartColumnCount > 0
                 case nil:
                     observedReuse[engine] = observedReuse[engine] == true
                         || incremental.metrics.incrementalParsing.reusedTokenCount > 0
@@ -99,8 +97,9 @@ struct PL0MutationSuiteTests {
 
         #expect(observedReuse[.referenceLL] == true)
         #expect(observedReuse[.generatedLR] == true)
-        #expect(observedReuse[.earley] != true)
-        #expect(observedEarleyFallback)
+        // Random malformed edits may repeatedly reset the fail-closed Earley
+        // baseline. Accepted-edit chart reuse is covered by the deterministic
+        // differential tests and product campaign.
     }
 
     @Test func mutationCampaignIsReproducibleForThePublishedSeed() {

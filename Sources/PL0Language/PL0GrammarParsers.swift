@@ -147,32 +147,36 @@ public struct IncrementalLRPL0Parser: Sendable {
     public mutating func reset() { runtime.reset() }
 }
 
-/// Earley remains a truthful full-parse adapter until the engine's dependency
-/// arena is connected to its chart construction loop.
 public struct IncrementalEarleyPL0Parser: Sendable {
-    private var tokenIDs: [String] = []
+    private let session: EarleyIncrementalSession
     private let languageKit: PL0LanguageKit
-    public init(languageKit: PL0LanguageKit = .bundled) { self.languageKit = languageKit }
+    public init(languageKit: PL0LanguageKit = .bundled) {
+        self.languageKit = languageKit
+        session = EarleyIncrementalSession(
+            grammar: ecosystemGrammar(languageKit.artifact))
+    }
     public mutating func parse(_ input: ParserInput) -> EarleyParseArtifact {
-        let next = input.tokens.filter { $0.kind != .endOfFile }.map(\.id)
-        let reused = commonPrefix(next, tokenIDs)
-        tokenIDs = next
-        let result = EcosystemPL0Engines.earley(input, languageKit: languageKit)
-        guard reused > 0 else { return result }
-        return EarleyParseArtifact(
-            recognition: result.recognition, forest: result.forest,
-            trace: result.trace, reusedChartColumnCount: 0,
-            incrementalEvidence: .init(
+        do {
+            let stream = try PL0EcosystemTokenStream(input)
+            let parsed = try session.parse(
+                stream: stream,
+                tokenIdentities: stream.tokens.map {
+                    EarleyTokenIdentity($0.id)
+                })
+            return try EcosystemPL0Engines.earleyArtifact(
+                result: parsed.result,
+                stream: stream,
+                reusedChartColumnCount: parsed.reusedChartColumnCount,
+                evidence: parsed.evidence)
+        } catch {
+            return EcosystemPL0Engines.rejectedEarley(evidence: .init(
                 strategy: .fallback,
                 fallback: .init(
-                    code: "pl0.earley.fullReparse",
-                    detail: "Stable tokens were observed, but the Earley chart construction loop rebuilt its chart."),
-                measurements: [.init(
-                    dimension: .chartColumns, reused: 0,
-                    rebuilt: result.recognition.consumedTokenCount + 1,
-                    strategy: "full-chart")]))
+                    code: "pl0.earley.incrementalFailure",
+                    detail: String(describing: error))))
+        }
     }
-    public mutating func reset() { tokenIDs = [] }
+    public mutating func reset() { session.reset() }
 }
 
 private enum EcosystemPL0Engines {
@@ -203,27 +207,56 @@ private enum EcosystemPL0Engines {
             let stream = try PL0EcosystemTokenStream(input)
             let parser = Earley_Parser.EarleyParser(grammar: ecosystemGrammar(languageKit.artifact))
             let result = try parser.parse(stream: stream)
-            let snapshot = try result.sppfGraph?.portableSnapshot()
-            let forest = snapshot.flatMap { projectForest($0, tokens: stream.tokens) }
-            let trace = projectEarleyTrace(snapshot, accepted: result.isSuccessful)
-            return EarleyParseArtifact(
-                recognition: GrammarRecognition(accepted: result.isSuccessful,
-                    consumedTokenCount: result.isSuccessful ? stream.tokens.count : 0,
-                    configurationCount: max(result.bsr.count, trace.count),
-                    maximumFrontierSize: snapshot?.nodes.count ?? 0),
-                forest: forest, trace: trace, reusedChartColumnCount: 0,
-                incrementalEvidence: .init(
+            return try earleyArtifact(
+                result: result, stream: stream, reusedChartColumnCount: 0,
+                evidence: .init(
                     strategy: .full,
                     measurements: [.init(
                         dimension: .chartColumns, reused: 0,
                         rebuilt: result.isSuccessful ? stream.tokens.count + 1 : 0,
                         strategy: "full-chart")]))
         } catch {
-            return EarleyParseArtifact(recognition: GrammarRecognition(accepted: false,
-                consumedTokenCount: 0, configurationCount: 1, maximumFrontierSize: 0),
-                forest: nil, trace: [], reusedChartColumnCount: 0,
-                incrementalEvidence: .init(strategy: .full))
+            return rejectedEarley(evidence: .init(strategy: .full))
         }
+    }
+
+    static func earleyArtifact(
+        result: Parser.ParseResult<Earley_Parser.NodeLabel>,
+        stream: PL0EcosystemTokenStream,
+        reusedChartColumnCount: Int,
+        evidence: IncrementalExecutionEvidence
+    ) throws -> EarleyParseArtifact {
+        let snapshot = try result.sppfGraph?.portableSnapshot()
+        let forest = snapshot.flatMap { projectForest($0, tokens: stream.tokens) }
+        var trace = projectEarleyTrace(snapshot, accepted: result.isSuccessful)
+        if reusedChartColumnCount > 0 {
+            trace.insert(.init(
+                id: -1, action: .reuse,
+                chartIndex: reusedChartColumnCount - 1,
+                production: "native Earley chart prefix",
+                dot: 0, origin: 0), at: 0)
+        }
+        return EarleyParseArtifact(
+            recognition: GrammarRecognition(
+                accepted: result.isSuccessful,
+                consumedTokenCount: result.isSuccessful ? stream.tokens.count : 0,
+                configurationCount: max(result.bsr.count, trace.count),
+                maximumFrontierSize: snapshot?.nodes.count ?? 0),
+            forest: forest,
+            trace: trace,
+            reusedChartColumnCount: reusedChartColumnCount,
+            incrementalEvidence: evidence)
+    }
+
+    static func rejectedEarley(
+        evidence: IncrementalExecutionEvidence
+    ) -> EarleyParseArtifact {
+        EarleyParseArtifact(
+            recognition: GrammarRecognition(
+                accepted: false, consumedTokenCount: 0,
+                configurationCount: 1, maximumFrontierSize: 0),
+            forest: nil, trace: [], reusedChartColumnCount: 0,
+            incrementalEvidence: evidence)
     }
 
     private static func rejectedLR(_ message: String) -> LRParseArtifact {
@@ -368,18 +401,8 @@ private func tokenSourceRange(_ range: Range<Int>, tokens: [PL0Token]) -> Source
 private func tokenKind(grammarName: String) -> PL0TokenKind? {
     PL0TokenKind.allCases.first { $0.grammarName == grammarName }
 }
-private func commonPrefix(_ lhs: [String], _ rhs: [String]) -> Int {
-    var count = 0
-    while count < lhs.count, count < rhs.count, lhs[count] == rhs[count] { count += 1 }
-    return count
-}
 private func reidentified(_ trace: [LRTraceEvent]) -> [LRTraceEvent] {
     trace.enumerated().map { index, event in LRTraceEvent(id: index + 1,
         action: event.action, tokenIndex: event.tokenIndex, state: event.state,
         detail: event.detail, stackDepth: event.stackDepth) }
-}
-private func reidentified(_ trace: [EarleyTraceEvent]) -> [EarleyTraceEvent] {
-    trace.enumerated().map { index, event in EarleyTraceEvent(id: index + 1,
-        action: event.action, chartIndex: event.chartIndex, production: event.production,
-        dot: event.dot, origin: event.origin) }
 }

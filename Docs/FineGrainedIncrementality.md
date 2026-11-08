@@ -86,11 +86,12 @@ generated LR session now consumes LR-Parsing's native stack checkpoints and
 exports its `parserStates` evidence. The source-positioned LR tree is still
 projected by the normal parser adapter and checked against clean execution.
 
-Earley no longer labels a stable token prefix as chart reuse. Its adapter emits
-the stable `pl0.earley.fullReparse` fallback until Earley-Parser's
-dependency-indexed arena is connected to live chart construction. RNGLR's
-graph/forest arenas and Compiler's semantic/IR sessions likewise remain
-owner-package facilities awaiting a PL/0 adapter with the required semantics.
+Earley now drives Earley-Parser's live incremental session. Stable lexer token
+identities retain the safe chart prefix and its BSR contributions; changed
+tokens invalidate the actual item facts that depend on them, and scanner,
+predictor, and completer execution resumes at the first changed token. RNGLR's
+graph/forest arenas and Compiler's semantic/IR sessions remain owner-package
+facilities awaiting a PL/0 adapter with the required semantics.
 
 Bytecode lowering currently reruns after a semantic change. It consumes the
 incrementally validated semantic model and is checked against fresh lowering,

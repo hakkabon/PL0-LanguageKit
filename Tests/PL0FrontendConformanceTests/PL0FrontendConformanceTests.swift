@@ -48,8 +48,8 @@ struct PL0FrontendConformanceTests {
         #expect(first.measurementFingerprint == second.measurementFingerprint)
         #expect(Set(first.scenarios.map(\.id)) == Set(PL0ProductCampaign.scenarios.map(\.id)))
         #expect(first.summaries.first {
-            $0.scenarioID == "edit.earley.disclosure"
-        }?.fallbackCount == 1)
+            $0.scenarioID == "edit.earley.chart"
+        }?.measurement(for: .chartFacts)?.reused ?? 0 > 0)
 
         let gate = first.evaluate(PL0ProductCampaign.releaseBudgets(
             protocol: measurementProtocol))

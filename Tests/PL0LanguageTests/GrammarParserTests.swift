@@ -111,7 +111,7 @@ struct GrammarParserTests {
         #expect(changed.root == full.root)
     }
 
-    @Test func incrementalEarleyDisclosesFullChartFallback() {
+    @Test func incrementalEarleyResumesNativeChart() {
         let old = "var x; begin x := 1; x := x + 1 end."
         let new = "var x; begin x := 2; x := x + 1 end."
         let (first, second) = incrementallyTokenized(old: old, new: new,
@@ -124,9 +124,12 @@ struct GrammarParserTests {
         let full = EarleyPL0Parser().parseDetailed(ParserInput(tokens: second.tokens,
                                                                lexicalDiagnostics: []))
         #expect(changed.recognition.accepted)
-        #expect(changed.reusedChartColumnCount == 0)
-        #expect(changed.incrementalEvidence.strategy == .fallback)
-        #expect(changed.incrementalEvidence.fallback?.code == "pl0.earley.fullReparse")
+        #expect(changed.reusedChartColumnCount > 0)
+        #expect(changed.trace.first?.action == .reuse)
+        #expect(changed.incrementalEvidence.strategy == .incremental)
+        #expect(changed.incrementalEvidence.measurements.first {
+            $0.dimension == .chartFacts
+        }?.reused ?? 0 > 0)
         #expect(changed.forest == full.forest)
     }
 
@@ -167,8 +170,8 @@ struct GrammarParserTests {
             Issue.record("Expected Earley artifact")
             return
         }
-        #expect(artifact.reusedChartColumnCount == 0)
-        #expect(artifact.incrementalEvidence.strategy == .fallback)
+        #expect(artifact.reusedChartColumnCount > 0)
+        #expect(artifact.incrementalEvidence.strategy == .incremental)
         #expect(artifact.forest?.root?.symbol == "Program")
         #expect(second.root.kind == "Program")
     }
@@ -203,8 +206,8 @@ struct GrammarParserTests {
             #expect(incrementalEarley.forest == EarleyPL0Parser().parseDetailed(input).forest)
             #expect(incrementalLR.reusedTokenCount > 0)
             #expect(incrementalLR.incrementalEvidence.strategy == .incremental)
-            #expect(incrementalEarley.reusedChartColumnCount == 0)
-            #expect(incrementalEarley.incrementalEvidence.strategy == .fallback)
+            #expect(incrementalEarley.reusedChartColumnCount > 0)
+            #expect(incrementalEarley.incrementalEvidence.strategy == .incremental)
         }
     }
 

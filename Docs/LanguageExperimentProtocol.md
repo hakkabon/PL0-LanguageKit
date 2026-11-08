@@ -104,9 +104,9 @@ The PL/0 parse adapter exports token and syntax-node reuse for the reference
 parser. Exporting a `PL0Analysis` additionally records dependency-aware symbol
 and binding reuse as `semanticNodes`, including measured invalidations. The LR
 adapter exports native `parserStates` measurements from LR-Parsing checkpoints.
-The Earley adapter reports an explicit full-reparse fallback and zero reused
-chart columns until dependency-indexed chart storage is connected to the live
-parser loop.
+The Earley adapter exports native `chartColumns` and `chartFacts` measurements.
+The former records the retained prefix used to resume parsing; the latter
+records dependency-indexed item retention, invalidation, and reconstruction.
 
 ## Invariants
 

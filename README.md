@@ -25,8 +25,9 @@ classification policy, formatting decisions, and transport adapter, while its
 native semantic model projects into the shared tooling graph.
 
 Generated LR analysis consumes LR-Parsing's native resumable stack checkpoints
-and publishes engine-owned parser-state evidence. Earley currently discloses a
-full-chart fallback rather than treating an unchanged token prefix as reuse.
+and publishes engine-owned parser-state evidence. Earley consumes the native
+live chart session, retains safe prefix columns and BSR contributions, and
+publishes dependency-indexed chart-fact evidence.
 
 ## Products
 
