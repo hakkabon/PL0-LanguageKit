@@ -29,6 +29,11 @@ and publishes engine-owned parser-state evidence. Earley consumes the native
 live chart session, retains safe prefix columns and BSR contributions, and
 publishes dependency-indexed chart-fact evidence.
 
+`PL0GrammarHotReloadCampaign` now exercises production-only, lexical,
+simultaneous grammar/source, and rejected grammar revisions. It preserves the
+retained document atomically, validates every activated artifact against clean
+ecosystem execution, and publishes Lexer's native grammar-transition evidence.
+
 ## Products
 
 - `PL0Language` — grammar-backed lexer, parser front ends, recovery model,
@@ -37,7 +42,8 @@ publishes dependency-indexed chart-fact evidence.
 - `PL0Conformance` — accepted, rejected, and mutation corpora shared by
   independent front ends.
 - `PL0FrontendConformance` — cross-product conformance plus the versioned
-  `PL0ProductCampaign` measurement and release gate.
+  `PL0ProductCampaign` measurement, grammar hot-reload campaign, and release
+  gate.
 - `LanguageExperimentProtocol` — transport-neutral experiment and reuse
   evidence values. This remains a separate module so it can move lower in the
   package graph later without changing PL/0 APIs.

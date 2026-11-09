@@ -90,3 +90,8 @@ deletion. These pieces remain and should be removed in subsequent migrations:
 Tests cover the directly linked ten-engine family, editor-facing LR/Earley
 adapters, deterministic comparison serialization, recovery compatibility,
 mutation campaigns and the existing editor/LSP/compiler behavior.
+
+The Phase-27 grammar campaign recompiles this same linked family for each
+activated artifact and compares it with a clean target session. Parser sessions
+are conservatively rebuilt across grammar revisions; only Lexer's verified
+grammar transition publishes cross-revision native reuse today.

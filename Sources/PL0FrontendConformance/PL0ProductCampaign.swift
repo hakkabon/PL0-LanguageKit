@@ -14,6 +14,13 @@ public enum PL0ProductCampaign {
     public static let scenarios: [IncrementalMeasurementScenario] =
         definitions.map(\.scenario)
 
+    /// Grammar revisions use a separate report because their artifact identity
+    /// changes during the campaign rather than remaining globally fixed.
+    public static func runGrammarHotReload() async throws
+        -> GrammarHotReloadCampaignReport {
+        try await PL0GrammarHotReloadCampaign.run()
+    }
+
     /// Host-independent release expectations. Timing budgets intentionally
     /// remain CI policy because timings are meaningful only on matched hosts.
     public static func releaseBudgets(
