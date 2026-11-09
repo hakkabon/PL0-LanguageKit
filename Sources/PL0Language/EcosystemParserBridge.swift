@@ -78,9 +78,12 @@ public struct EcosystemParserComparison: Codable, Sendable, Equatable {
 /// has no duplicated engine implementation and no Grammar-REPL subprocess.
 public actor PL0EcosystemParserSession {
     private let languageKit: PL0LanguageKit
+    private let rnglrSession: RNGLRIncrementalSession
 
     public init(languageKit: PL0LanguageKit = .bundled) {
         self.languageKit = languageKit
+        rnglrSession = RNGLRIncrementalSession(
+            grammar: ecosystemGrammar(languageKit.artifact))
     }
 
     public func compare(_ snapshot: SourceSnapshot) throws -> EcosystemParserComparison {
@@ -119,12 +122,16 @@ public actor PL0EcosystemParserSession {
                 return try generalized(engine,
                     CYK_Parser.CYKParser(grammar: grammar).parse(stream: stream))
             case .rnglr:
-                // RNGLR 0.2.x predates TokenStream conformance. Feed it the
-                // same normalized terminal names, not the PL/0 lexemes.
+                // RNGLR consumes normalized terminal names while preserving
+                // the stable identities supplied by the shared PL/0 lexer.
                 let normalized = stream.tokens.map { $0.kind.grammarName }
                     .joined(separator: " ")
+                let identities = stream.tokens.map {
+                    RNGLRStableTokenID($0.id)
+                }
                 return try generalized(engine,
-                    RNGLR_Parser.RNGLRParser(grammar: grammar).parse(normalized))
+                    rnglrSession.parse(
+                        normalized, tokenIdentities: identities).result)
             case .ll1:
                 let result = LL_Parsing.LLParser(grammar: grammar)
                     .parseWithRecovery(stream: stream)

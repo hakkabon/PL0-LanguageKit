@@ -61,9 +61,10 @@ acceptance, `divergent` when they disagree, and `inconclusive` when fewer than
 two engines are supported. ModEdit never changes an engine's decision to match
 the compatibility parser.
 
-RNGLR 0.2.x does not yet accept Lexer's `TokenStream`, so its adapter feeds the
-same normalized terminal names as a synthetic source string. This is an API
-compatibility shim, not another recognizer.
+RNGLR still consumes normalized terminal names as a synthetic source string,
+but its live session now receives the corresponding stable PL/0 lexer token
+identities. This is an API compatibility shim, not another recognizer; native
+GSS and BSR state survives through the unchanged prefix.
 
 ## Remaining duplication
 
@@ -81,10 +82,10 @@ deletion. These pieces remain and should be removed in subsequent migrations:
 * The PL/0 compiler and VM predate the direct Compiler dependency. PL/0
   semantic lowering should target Compiler's syntax adapter, IR, bytecode and
   runtime contracts, retaining only genuinely language-specific semantics.
-* Generated LR now uses LR-Parsing's native stack checkpoints. Earley stable
-  prefixes are no longer reported as chart reuse; the adapter discloses a full
-  reparse until Earley-Parser's dependency arena drives live chart construction.
-  RNGLR graph/forest arenas likewise still require parser-loop adoption.
+* Generated LR uses LR-Parsing's native stack checkpoints, Earley drives its
+  live chart session, and the ecosystem RNGLR comparison drives its live
+  GSS/BSR session. A direct neutral `TokenStream` entry point would remove
+  RNGLR's remaining normalized-source compatibility shim.
 
 Tests cover the directly linked ten-engine family, editor-facing LR/Earley
 adapters, deterministic comparison serialization, recovery compatibility,

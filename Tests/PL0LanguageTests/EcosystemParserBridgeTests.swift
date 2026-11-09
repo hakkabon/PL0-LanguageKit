@@ -28,6 +28,18 @@ struct EcosystemParserBridgeTests {
         #expect(comparison.engines.allSatisfy { !$0.replayEvents.isEmpty })
     }
 
+    @Test func liveRNGLRSessionSurvivesAStablePrefixEdit() async throws {
+        let session = PL0EcosystemParserSession()
+        let first = try await session.compare(
+            SourceSnapshot(version: 1, text: "var x; begin x := 1 end."))
+        let edited = try await session.compare(
+            SourceSnapshot(version: 2, text: "var x; begin x := 2 end."))
+
+        #expect(first.engines.first { $0.parser == .rnglr }?.accepted == true)
+        #expect(edited.engines.first { $0.parser == .rnglr }?.accepted == true)
+        #expect(edited.revision == 2)
+    }
+
     @Test func comparisonRoundTripsForExperimentStorage() async throws {
         let snapshot = SourceSnapshot(version: 3, text: ".")
         let session = PL0LanguageSession(engine: .generatedLR)

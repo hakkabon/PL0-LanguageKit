@@ -89,9 +89,11 @@ projected by the normal parser adapter and checked against clean execution.
 Earley now drives Earley-Parser's live incremental session. Stable lexer token
 identities retain the safe chart prefix and its BSR contributions; changed
 tokens invalidate the actual item facts that depend on them, and scanner,
-predictor, and completer execution resumes at the first changed token. RNGLR's
-graph/forest arenas and Compiler's semantic/IR sessions remain owner-package
-facilities awaiting a PL/0 adapter with the required semantics.
+predictor, and completer execution resumes at the first changed token. The
+ecosystem comparison also keeps a live RNGLR session: stable lexer identities
+retain prefix GSS/BSR state and the changed suffix is replayed by RNGLR's native
+driver. Compiler's semantic/IR sessions remain owner-package facilities awaiting
+a PL/0 adapter with the required semantics.
 
 Bytecode lowering currently reruns after a semantic change. It consumes the
 incrementally validated semantic model and is checked against fresh lowering,
