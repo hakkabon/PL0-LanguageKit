@@ -46,9 +46,7 @@ public actor PL0ProviderSession: LanguageToolingSession {
         if let change, change.after != snapshot {
             throw LanguageProviderError.inconsistentChange
         }
-        let input = change.map(PL0Language.SourceSnapshot.init)
-            ?? PL0Language.SourceSnapshot(snapshot)
-        let analysis = await session.analyze(input)
+        let analysis = await session.analyze(snapshot, change: change)
         currentText = snapshot.text
         currentAnalysis = analysis
         let parse = analysis.parse

@@ -1,4 +1,5 @@
 import Foundation
+import IncrementalParsing
 import LL_Parsing
 
 /// Parser identity is explicit so the workbench can compare engines later
@@ -205,6 +206,32 @@ public actor PL0LanguageSession {
         let clock = ContinuousClock()
         let start = clock.now
         let tokenized = tokenizer.tokenize(snapshot)
+        return accept(tokenized, snapshot: snapshot, startedAt: start, clock: clock)
+    }
+
+    /// Canonical platform entry point. The exact SourceChange reaches Lexer;
+    /// the compatibility snapshot remains an internal projection until the
+    /// remaining PL/0 semantic APIs adopt SourceRevision directly.
+    public func parse(
+        _ snapshot: IncrementalParsing.SourceSnapshot,
+        change: IncrementalParsing.SourceChange? = nil
+    ) -> ParseResult {
+        precondition(change == nil || change?.after == snapshot)
+        let clock = ContinuousClock()
+        let start = clock.now
+        let tokenized = tokenizer.tokenize(snapshot, change: change)
+        let compatibility = change.map(SourceSnapshot.init)
+            ?? SourceSnapshot(snapshot)
+        return accept(
+            tokenized, snapshot: compatibility, startedAt: start, clock: clock)
+    }
+
+    private func accept(
+        _ tokenized: IncrementalLexResult,
+        snapshot: SourceSnapshot,
+        startedAt start: ContinuousClock.Instant,
+        clock: ContinuousClock
+    ) -> ParseResult {
         let duration = start.duration(to: clock.now)
         let parts = duration.components
         let nanoseconds = UInt64(max(0, parts.seconds)) &* 1_000_000_000
@@ -252,6 +279,16 @@ public actor PL0LanguageSession {
 
     public func analyze(_ snapshot: SourceSnapshot) -> PL0Analysis {
         analysis(for: snapshot)
+    }
+
+    public func analyze(
+        _ snapshot: IncrementalParsing.SourceSnapshot,
+        change: IncrementalParsing.SourceChange? = nil
+    ) -> PL0Analysis {
+        _ = parse(snapshot, change: change)
+        let compatibility = change.map(SourceSnapshot.init)
+            ?? SourceSnapshot(snapshot)
+        return analysis(for: compatibility)
     }
 
     public func reset() {
