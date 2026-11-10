@@ -58,13 +58,19 @@ public actor PL0ProviderSession: LanguageToolingSession {
                 classification: Self.classification(token.classification),
                 modifiers: token.isDeclaration ? ["declaration"] : [])
         }
-        let diagnostics = parse.diagnostics.map { diagnostic in
+        var diagnostics = parse.diagnostics.map { diagnostic in
             LanguageProviderDiagnostic(
                 severity: Self.severity(diagnostic.severity),
                 message: diagnostic.message,
                 range: diagnostic.range.incrementalRange,
                 expected: diagnostic.expected.map(\.rawValue))
         }
+        diagnostics.append(contentsOf: analysis.semantics.diagnostics.map {
+            LanguageProviderDiagnostic(
+                severity: .error,
+                message: $0.message,
+                range: $0.range.incrementalRange)
+        })
         return LanguageProviderAnalysis(
             languageID: "pl0",
             revision: snapshot.revision,

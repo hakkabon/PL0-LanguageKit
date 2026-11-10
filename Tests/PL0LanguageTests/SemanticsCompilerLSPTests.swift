@@ -1,14 +1,15 @@
 import Foundation
+import IncrementalParsing
 import LanguageToolingTesting
 import Testing
 @testable import PL0Language
 
-@Suite("PL/0 shared semantics, compiler, and LSP")
+@Suite("PL/0 shared semantics, compiler, and provider")
 struct SemanticsCompilerLSPTests {
     @Test func semanticModelOwnsScopesSlotsAndResolution() async {
         let source = "const limit = 3; var x; procedure p; var local; begin local := x end; begin x := limit; call p end."
         let analysis = await PL0LanguageSession().analyze(
-            SourceSnapshot(version: 7, text: source))
+            PL0Language.SourceSnapshot(version: 7, text: source))
 
         let limit = analysis.semantics.symbols.first { $0.name == "limit" }
         let x = analysis.semantics.symbols.first { $0.name == "x" }
@@ -30,7 +31,7 @@ struct SemanticsCompilerLSPTests {
     @Test func semanticModelPublishesConformingSharedToolingGraph() async throws {
         let source = "const limit = 3; var x; begin x := limit end."
         let analysis = await PL0LanguageSession().analyze(
-            SourceSnapshot(version: 8, text: source))
+            PL0Language.SourceSnapshot(version: 8, text: source))
 
         try ToolingConformance.validate(
             index: analysis.semantics.toolingIndex,
@@ -39,12 +40,14 @@ struct SemanticsCompilerLSPTests {
             == analysis.semantics.symbols.count)
     }
 
-    @Test func semanticDiagnosticsAreSharedByCompilerAndLSP() async throws {
+    @Test func semanticDiagnosticsAreSharedByCompilerAndProvider() async throws {
         let source = "const c = 1; var x, x; procedure p; ; begin c := p; call x; y := 1 end."
-        let uri = "file:///shared-semantics.pl0"
-        let adapter = PL0LSPAdapter()
-        let lspDiagnostics = await adapter.open(uri: uri, version: 1, text: source)
-        let analysis = try await adapter.analysis(uri: uri)
+        let analysis = await PL0LanguageSession().analyze(
+            PL0Language.SourceSnapshot(version: 1, text: source))
+        let provider = PL0ProviderSession()
+        let providerAnalysis = try await provider.analyze(
+            IncrementalParsing.SourceSnapshot(
+                text: source, revision: .init(1)), change: nil)
 
         #expect(analysis.semantics.diagnostics.contains {
             $0.message.contains("Duplicate declaration")
@@ -55,41 +58,20 @@ struct SemanticsCompilerLSPTests {
         #expect(analysis.semantics.diagnostics.contains {
             $0.message.contains("Unknown identifier 'y'")
         })
-        #expect(lspDiagnostics.filter { $0.source == "pl0-semantics" }.count
-                == analysis.semantics.diagnostics.count)
+        for diagnostic in analysis.semantics.diagnostics {
+            #expect(providerAnalysis.diagnostics.contains {
+                $0.message == diagnostic.message
+            })
+        }
         #expect(throws: PL0CompilationError.self) {
             _ = try PL0Compiler().compile(analysis)
         }
     }
 
-    @Test func rangedLSPChangeRetainsIncrementalSemanticIdentity() async throws {
-        let source = "var value; begin value := 1 end."
-        let uri = "file:///incremental-semantics.pl0"
-        let adapter = PL0LSPAdapter()
-        _ = await adapter.open(uri: uri, version: 1, text: source)
-        let first = try await adapter.analysis(uri: uri)
-        let firstID = try #require(
-            first.semantics.symbols.first { $0.name == "value" }?.id)
-        let number = (source as NSString).range(of: "1")
-        let map = LSPLineMap(source)
-
-        _ = try await adapter.change(
-            uri: uri, version: 2,
-            changes: [LSPTextChange(
-                range: LSPRange(start: map.position(of: number.location),
-                                end: map.position(of: number.location + number.length)),
-                text: "2")])
-        let second = try await adapter.analysis(uri: uri)
-
-        #expect(second.parse.metrics.incrementalLexing.incremental)
-        #expect(second.semantics.symbols.first { $0.name == "value" }?.id == firstID)
-        #expect(second.semantics.version == 2)
-    }
-
     @Test func compilationPublishesCompilerSyntaxBoundary() async throws {
         let source = "var x; begin x := 2 + 3 end."
         let analysis = await PL0LanguageSession().analyze(
-            SourceSnapshot(version: 1, text: source))
+            PL0Language.SourceSnapshot(version: 1, text: source))
         let artifacts = try PL0Compiler().compileArtifacts(analysis)
         let execution = try PL0VirtualMachine().run(artifacts.program)
 

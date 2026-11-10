@@ -1,10 +1,11 @@
 import Testing
+import IncrementalParsing
 @testable import PL0Language
 
 @Suite("Unified PL/0 experimental front end")
 struct UnifiedFrontendTests {
     @Test func preparedInputFeedsEveryLocalEngine() {
-        let snapshot = SourceSnapshot(
+        let snapshot = PL0Language.SourceSnapshot(
             version: 17, text: "var x; begin x := 1 end.")
         let sourceFrontend = PL0Frontend()
         let prepared = sourceFrontend.prepare(snapshot)
@@ -31,13 +32,17 @@ struct UnifiedFrontendTests {
         let source = "start end."
 
         #expect(PL0Frontend().parse(
-            SourceSnapshot(version: 1, text: source)).diagnostics.isEmpty == false)
+            PL0Language.SourceSnapshot(
+                version: 1, text: source)).diagnostics.isEmpty == false)
         #expect(try PL0Formatter(frontend: frontend).format(source) == "start\nend.\n")
         _ = try PL0Compiler(frontend: frontend).compile(
-            SourceSnapshot(version: 1, text: source))
+            PL0Language.SourceSnapshot(version: 1, text: source))
 
-        let diagnostics = await PL0LSPAdapter(frontend: frontend).open(
-            uri: "file:///custom.pl0", version: 1, text: source)
-        #expect(diagnostics.isEmpty)
+        let provider = PL0ProviderSession(languageKit: kit)
+        let analysis = try await provider.analyze(
+            IncrementalParsing.SourceSnapshot(
+                text: source, revision: .init(1)),
+            change: nil)
+        #expect(analysis.diagnostics.isEmpty)
     }
 }

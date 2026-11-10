@@ -21,8 +21,13 @@ conformances without owning the cache algorithm.
 Editor-neutral coordinates, completion values, semantic graph queries,
 semantic-token encoding, formatting mechanics, and tooling conformance checks
 are supplied by `Language-Tooling`. PL/0 retains its binding rules, semantic
-classification policy, formatting decisions, and transport adapter, while its
+classification policy and formatting decisions, while its
 native semantic model projects into the shared tooling graph.
+
+Phase 32 removed the legacy PL/0-specific LSP session. Consumers now use
+`PL0ProviderSession`, the same `LanguageToolingSession` boundary used by Pascal
+and product hosts. Semantic diagnostics are included directly in provider
+analysis, so deleting the parallel adapter does not discard diagnostics.
 
 Generated LR analysis consumes LR-Parsing's native resumable stack checkpoints
 and publishes engine-owned parser-state evidence. Earley consumes the native
@@ -37,16 +42,32 @@ ecosystem execution, and publishes Lexer's native grammar-transition evidence.
 ## Products
 
 - `PL0Language` — grammar-backed lexer, parser front ends, recovery model,
-  formatter, semantic analysis, compiler, VM, LSP adapter, and the shared
+  formatter, semantic analysis, compiler, VM, and the shared
   `PL0Provider` language-provider entry point.
 - `PL0Conformance` — accepted, rejected, and mutation corpora shared by
   independent front ends.
 - `PL0FrontendConformance` — cross-product conformance plus the versioned
   `PL0ProductCampaign` measurement, grammar hot-reload campaign, and release
   gate.
-- `LanguageExperimentProtocol` — transport-neutral experiment and reuse
-  evidence values. This remains a separate module so it can move lower in the
-  package graph later without changing PL/0 APIs.
+
+Transport-neutral experiment and reuse evidence now belongs to
+Language-Tooling's `LanguageExperimentProtocol` product. Product-specific
+Grammar-Workbench process and hot-reload transport code is no longer part of
+this language kit.
+
+## Human-scale reading path
+
+For a quick understanding of the language, read only:
+
+1. `Resources/PL0.grammar`;
+2. `PL0LanguageKit.swift` and `Token.swift`;
+3. `PL0Parser.swift`, `ConcreteSyntaxTree.swift`, and `SyntaxNode.swift`;
+4. `PL0Semantics.swift`;
+5. `PL0VirtualMachine.swift`; and
+6. `PL0LanguageProvider.swift`.
+
+The remaining engine and campaign files are integration evidence, not a second
+definition of the PL/0 language.
 
 The canonical grammar is bundled at
 `Sources/PL0Language/Resources/PL0.grammar`. Every supported parser engine is

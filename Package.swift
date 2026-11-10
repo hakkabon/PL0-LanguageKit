@@ -10,9 +10,6 @@ let package = Package(
         .library(name: "PL0Language", targets: ["PL0Language"]),
         .library(name: "PL0Conformance", targets: ["PL0Conformance"]),
         .library(name: "PL0FrontendConformance", targets: ["PL0FrontendConformance"]),
-        .library(
-            name: "LanguageExperimentProtocol",
-            targets: ["LanguageExperimentProtocol"]),
     ],
     dependencies: [
         .package(path: "../Grammar"),
@@ -29,7 +26,6 @@ let package = Package(
         .package(path: "../Compiler"),
     ],
     targets: [
-        .target(name: "LanguageExperimentProtocol"),
         .target(
             name: "CompilerBridge",
             dependencies: [
@@ -38,7 +34,9 @@ let package = Package(
         .target(
             name: "PL0Language",
             dependencies: [
-                "LanguageExperimentProtocol",
+                .product(
+                    name: "LanguageExperimentProtocol",
+                    package: "Language-Tooling"),
                 "CompilerBridge",
                 .product(name: "Grammar", package: "Grammar"),
                 .product(name: "Parser", package: "Parser"),
@@ -74,10 +72,10 @@ let package = Package(
                 .product(
                     name: "LanguageToolingTesting",
                     package: "Language-Tooling"),
+                .product(
+                    name: "LanguageExperimentProtocol",
+                    package: "Language-Tooling"),
             ]),
-        .testTarget(
-            name: "LanguageExperimentProtocolTests",
-            dependencies: ["LanguageExperimentProtocol"]),
         .testTarget(
             name: "PL0FrontendConformanceTests",
             dependencies: [
