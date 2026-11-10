@@ -1,6 +1,18 @@
 import Foundation
 import Lexer
 
+struct PL0LexicalProjection: GrammarLexicalProjection {
+    func token(_ token: GrammarLexicalToken) -> PL0Token { mapToken(token) }
+    func element(_ element: GrammarLexicalElement) -> PL0LosslessToken? {
+        mapElement(element)
+    }
+    func diagnostic(
+        _ diagnostic: GrammarLexicalDiagnostic
+    ) -> ParseDiagnostic {
+        mapDiagnostic(diagnostic)
+    }
+}
+
 public struct LexResult: Sendable {
     public let tokens: [PL0Token]
     public let losslessTokens: [PL0LosslessToken]

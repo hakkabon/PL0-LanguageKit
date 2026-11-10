@@ -14,6 +14,14 @@ BNF resource by `GrammarParser`. Batch scanning is supplied by Lexer's
 public token API; it owns no grammar parser, scanner rules, or
 restart/convergence conformances.
 
+Phase 33 moves the remaining language-kit substrate to its owning packages:
+source coordinates and incremental input envelopes live in
+Incremental-Parsing; syntax nodes, concrete terminals, diagnostics, recovery,
+parser descriptors and reuse metrics live in Parser; typed grammar-token
+projection lives in Lexer; and generic LL relocation conformances live in
+LL-Parsing. Every implementation filename in `PL0Language` now begins with
+`PL0`, and a package test enforces that ownership boundary.
+
 Reference-parser region reuse and recovery replay are supplied by
 LL-Parsing's `LLRegionMemoizer`; PL/0 provides its rule keys and relocation
 conformances without owning the cache algorithm.
@@ -60,8 +68,8 @@ this language kit.
 For a quick understanding of the language, read only:
 
 1. `Resources/PL0.grammar`;
-2. `PL0LanguageKit.swift` and `Token.swift`;
-3. `PL0Parser.swift`, `ConcreteSyntaxTree.swift`, and `SyntaxNode.swift`;
+2. `PL0LanguageKit.swift` and `PL0Tokens.swift`;
+3. `PL0Parser.swift` and `PL0ParseProducts.swift`;
 4. `PL0Semantics.swift`;
 5. `PL0VirtualMachine.swift`; and
 6. `PL0LanguageProvider.swift`.

@@ -13,13 +13,13 @@ public struct IncrementalLexResult: Sendable {
 /// Thin typed projection over Lexer's grammar-driven incremental tokenizer.
 /// PL/0 owns no scanner rules and no restart/convergence conformances.
 public struct PL0IncrementalTokenizer: Sendable {
-    private var tokenizer: GrammarIncrementalTokenizer
+    private var tokenizer: GrammarLanguageTokenizer<PL0LexicalProjection>
 
     public init(languageKit: PL0LanguageKit = .bundled) {
         do {
-            tokenizer = RestartAndConvergeTokenizer(
-                scanner: try GrammarDrivenLexer(
-                    specification: languageKit.artifact.lexicalSpecification))
+            tokenizer = try GrammarLanguageTokenizer(
+                specification: languageKit.artifact.lexicalSpecification,
+                projection: PL0LexicalProjection())
         } catch {
             preconditionFailure("Invalid compiled PL/0 lexical artifact: \(error)")
         }
@@ -46,16 +46,14 @@ public struct PL0IncrementalTokenizer: Sendable {
     public mutating func reset() { tokenizer.reset() }
 
     private func project(
-        _ result: RestartAndConvergeResult<GrammarLexicalToken,
-                                          GrammarLexicalElement,
-                                          GrammarLexicalDiagnostic>
+        _ result: ProjectedIncrementalLexResult<PL0LexicalProjection>
     ) -> IncrementalLexResult {
         IncrementalLexResult(
             version: result.revision,
             lexed: LexResult(
-                tokens: result.output.tokens.map(mapToken),
-                losslessTokens: result.output.elements.compactMap(mapElement),
-                diagnostics: result.output.diagnostics.map(mapDiagnostic)),
+                tokens: result.output.tokens,
+                losslessTokens: result.output.elements,
+                diagnostics: result.output.diagnostics),
             metrics: result.metrics)
     }
 }

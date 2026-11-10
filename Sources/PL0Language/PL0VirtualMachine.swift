@@ -1,5 +1,6 @@
 import CompilerBridge
 import Foundation
+import IncrementalParsing
 
 public enum PL0Opcode: String, Sendable {
     case push, load, store, call, allocate, jump, jumpIfFalse
