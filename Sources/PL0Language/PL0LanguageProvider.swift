@@ -20,6 +20,12 @@ public struct PL0Provider: LanguageToolingProvider {
     public func makeToolingSession() -> any LanguageToolingSession {
         PL0ProviderSession()
     }
+
+    public func makeToolingSession(
+        documentURI: String
+    ) -> any LanguageToolingSession {
+        PL0ProviderSession(documentURI: documentURI)
+    }
 }
 
 public actor PL0ProviderSession: LanguageToolingSession {
