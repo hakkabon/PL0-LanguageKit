@@ -58,6 +58,7 @@ public actor PL0ProviderSession: LanguageToolingSession {
         }
         var diagnostics = parse.diagnostics.map { diagnostic in
             LanguageProviderDiagnostic(
+                id: diagnostic.id,
                 severity: Self.severity(diagnostic.severity),
                 message: diagnostic.message,
                 range: diagnostic.range.incrementalRange,
@@ -75,6 +76,22 @@ public actor PL0ProviderSession: LanguageToolingSession {
             artifact: artifactIdentity,
             tokens: tokens,
             diagnostics: diagnostics,
+            recoveryEdits: parse.recovery.events.map { event in
+                let action: LanguageProviderRecoveryAction
+                switch event.action {
+                case .insert(let kind, let offset):
+                    action = .insert(
+                        terminal: kind.displayName, atUTF16Offset: offset)
+                case .delete(let token):
+                    action = .delete(
+                        terminal: token.kind.displayName, range: token.range)
+                }
+                return LanguageProviderRecoveryEdit(
+                    action: action,
+                    expected: event.expected.map(\.displayName),
+                    cost: event.cost,
+                    diagnosticID: event.diagnosticIDs.first)
+            },
             operations: [
                 .init(
                     operation: "lexing",

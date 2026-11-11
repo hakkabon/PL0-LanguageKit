@@ -53,6 +53,21 @@ struct PL0LanguageProviderTests {
         }
     }
 
+    @Test func providerPublishesSourceCoordinateRecovery() async throws {
+        let source = "var x begin x := 1 end."
+        let analysis = try await PL0Provider().makeSession().analyze(.init(
+            text: source, revision: .init(1)))
+
+        #expect(!analysis.recoveryEdits.isEmpty)
+        #expect(analysis.recoveryEdits.allSatisfy {
+            $0.range.location <= source.utf16.count
+        })
+        #expect(analysis.recoveryEdits.allSatisfy { edit in
+            guard let id = edit.diagnosticID else { return true }
+            return analysis.diagnostics.contains { $0.id == id }
+        })
+    }
+
     @Test func providerPublishesSharedToolingOperations() async throws {
         let source = "var value; begin value := 1 end."
         let session = PL0Provider().makeToolingSession()
