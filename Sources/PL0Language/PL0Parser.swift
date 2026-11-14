@@ -365,12 +365,18 @@ private final class ReferenceParser {
             reusedTokenCount: reusedTokenCount,
             parsedNodeCount: max(0, root.nodeCount - reusedNodeCount),
             incremental: memoizer.isIncremental)
+        // PL/0 diagnostics use revision-local source coordinates for their
+        // public IDs. Cached diagnostics retain their original IDs internally.
+        let publishedDiagnostics = diagnostics.map {
+            ParseDiagnostic(severity: $0.severity, message: $0.message,
+                            range: $0.range, expected: $0.expected)
+        }
         let recovery = RecoveryModel(actions: recoveries,
                                      expectations: expectations,
-                                     diagnostics: diagnostics)
+                                     diagnostics: publishedDiagnostics)
         let syntaxTree = ConcreteSyntaxTree(root: root, sourceTokens: tokens,
                                             recoveryActions: recoveries)
-        return ParserOutput(syntaxTree: syntaxTree, diagnostics: diagnostics,
+        return ParserOutput(syntaxTree: syntaxTree, diagnostics: publishedDiagnostics,
                             recovery: recovery,
                             reuseMetrics: reuseMetrics)
     }
